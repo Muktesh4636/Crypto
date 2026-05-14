@@ -5,17 +5,20 @@ from typing import Any
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score
 
-from markets.ml.model import SignalModel
+from markets.ml.model import SignalModel, available_model_symbols
 from markets.models import PaperTrade
 from markets.services.features import FEATURE_COLUMNS, TARGET_NAME_TO_CLASS
 
 
-def trade_journal_training_frame(symbol: str = "BTCUSDT") -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def trade_journal_training_frame(symbol: str | None = None) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     rows: list[dict[str, Any]] = []
     targets: list[int] = []
     weights: list[float] = []
 
-    qs = PaperTrade.objects.filter(symbol=symbol).exclude(outcome=PaperTrade.Outcome.OPEN).order_by("closed_at")
+    qs = PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN)
+    if symbol:
+        qs = qs.filter(symbol=symbol)
+    qs = qs.order_by("closed_at")
     for trade in qs:
         snapshot = trade.signal_snapshot or {}
         row = {column: float(snapshot.get(column, 0.0) or 0.0) for column in FEATURE_COLUMNS}
@@ -41,7 +44,7 @@ def trade_journal_training_frame(symbol: str = "BTCUSDT") -> tuple[pd.DataFrame,
     )
 
 
-def retrain_signal_model(symbol: str = "BTCUSDT") -> dict[str, float | int | str]:
+def _retrain_one_symbol(symbol: str) -> dict[str, float | int | str]:
     features, labels, weights = trade_journal_training_frame(symbol)
     if len(features) < 20:
         raise ValueError("Need at least 20 closed paper trades before retraining.")
@@ -53,7 +56,7 @@ def retrain_signal_model(symbol: str = "BTCUSDT") -> dict[str, float | int | str
     test_x = features.iloc[split_idx:]
     test_y = labels.iloc[split_idx:]
 
-    model = SignalModel.load_if_available() or SignalModel()
+    model = SignalModel.load_if_available(symbol=symbol) or SignalModel()
     train_metrics = model.train(train_x, train_y, sample_weight=train_w)
     result: dict[str, float | int | str] = {
         "symbol": symbol,
@@ -69,10 +72,37 @@ def retrain_signal_model(symbol: str = "BTCUSDT") -> dict[str, float | int | str
     model.save(
         {
             **result,
+            "analysis_mode": "per_symbol",
             "retrained_from_trade_rows": int(len(features)),
             "retrained_from_losses": int(
                 PaperTrade.objects.filter(symbol=symbol, outcome=PaperTrade.Outcome.LOSS).count()
             ),
-        }
+        },
+        symbol=symbol,
     )
     return result
+
+
+def retrain_signal_model(symbol: str | None = None) -> dict[str, Any]:
+    if symbol:
+        return _retrain_one_symbol(symbol)
+
+    symbols = sorted(
+        set(PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN).values_list("symbol", flat=True))
+        | set(available_model_symbols())
+    )
+    results: dict[str, dict[str, float | int | str]] = {}
+    skipped: dict[str, str] = {}
+    for sym in symbols:
+        try:
+            results[sym] = _retrain_one_symbol(sym)
+        except ValueError as exc:
+            skipped[sym] = str(exc)
+    if not results:
+        raise ValueError("Need at least 20 closed paper trades for at least one symbol before retraining.")
+    return {
+        "analysis_mode": "per_symbol",
+        "trained_symbols": sorted(results.keys()),
+        "skipped_symbols": skipped,
+        "results": results,
+    }

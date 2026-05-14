@@ -142,6 +142,25 @@
       filter: brightness(1.04);
       transform: translateY(-1px);
     }
+    a.secondary-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0.55rem 0.9rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+    a.secondary-link:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -230,6 +249,9 @@
     .trade-table table {
       min-width: 0;
     }
+    .trade-table .table-wrap {
+      overflow-x: auto;
+    }
     .trade-table td:last-child,
     .trade-table th:last-child {
       text-align: right;
@@ -237,12 +259,56 @@
     .trade-table td {
       padding-top: 0.7rem;
       padding-bottom: 0.7rem;
+      vertical-align: top;
     }
     .trade-empty {
       padding: 1.5rem 0.5rem 0.5rem;
       color: var(--muted);
       font-size: 0.88rem;
       text-align: center;
+    }
+    .trade-symbol {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .trade-sub {
+      display: block;
+      margin-top: 0.18rem;
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+    .trade-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .trade-pill.open {
+      background: rgba(47, 125, 246, 0.1);
+      border-color: rgba(47, 125, 246, 0.18);
+      color: #245acb;
+    }
+    .trade-pill.win {
+      background: rgba(12, 166, 120, 0.1);
+      border-color: rgba(12, 166, 120, 0.18);
+      color: var(--up);
+    }
+    .trade-pill.loss {
+      background: rgba(230, 72, 72, 0.1);
+      border-color: rgba(230, 72, 72, 0.18);
+      color: var(--down);
+    }
+    .trade-pill.flat {
+      color: var(--text);
     }
     .meta-bar {
       display: grid;
@@ -471,6 +537,7 @@
             <input type="search" id="q" placeholder="Search BTC, BTCUSDT, SOL..." autocomplete="off" aria-label="Filter symbols">
           </label>
           <button type="button" class="primary" id="refresh">Refresh data</button>
+          <a href="/reports/" class="secondary-link">Trades &amp; reports</a>
         </div>
       </div>
     </header>
@@ -479,8 +546,8 @@
       <div class="card paper-card">
         <div class="card-head">
           <div>
-            <h2 class="section-title">AI futures short book</h2>
-            <p class="section-sub">Fake capital, short-only futures signals, and trade journaling before risking real money.</p>
+            <h2 class="section-title">AI futures short scanner</h2>
+            <p class="section-sub">Fake capital, short-only futures signals, and cross-coin scanning before risking real money.</p>
           </div>
           <span class="pill" id="paperStatus">Loading</span>
         </div>
@@ -501,7 +568,7 @@
             <span class="subtle mono" id="paperRealizedUsdt">—</span>
           </div>
           <div class="summary-metric">
-            <span class="label">Open position</span>
+            <span class="label">Open positions</span>
             <span class="value" id="paperOpenState">—</span>
             <span class="subtle" id="paperModelVersion">Short-only model: —</span>
           </div>
@@ -511,8 +578,8 @@
       <div class="card paper-card trade-table">
         <div class="card-head">
           <div>
-            <h2 class="section-title">Recent futures shorts</h2>
-            <p class="section-sub">Latest simulated short entries/exits from the current futures model version.</p>
+            <h2 class="section-title">All futures trades</h2>
+            <p class="section-sub">Every paper short entry and exit, with live status, prices, confidence, and P&amp;L.</p>
           </div>
           <span class="pill" id="paperSignalTime">Signal —</span>
         </div>
@@ -520,11 +587,15 @@
           <table>
             <thead>
               <tr>
+                <th scope="col">Symbol</th>
                 <th scope="col">Action</th>
                 <th scope="col">Status</th>
                 <th scope="col" class="num">Entry</th>
+                <th scope="col" class="num">Exit / Now</th>
                 <th scope="col" class="num">P&amp;L</th>
+                <th scope="col" class="num">Confidence</th>
                 <th scope="col">Opened</th>
+                <th scope="col">Closed</th>
               </tr>
             </thead>
             <tbody id="paperTradesBody"></tbody>
@@ -795,41 +866,71 @@
       }
       paperTradesEmptyEl.hidden = true;
       rows.forEach(function (row) {
+        const pnl = Number(row.pnl_usdt) || 0;
+        const outcomeClass =
+          row.outcome === "OPEN"
+            ? "open"
+            : row.outcome === "WIN"
+            ? "win"
+            : row.outcome === "LOSS"
+            ? "loss"
+            : "flat";
+        const displayPrice =
+          row.display_price_usdt == null ? "—" : fmtPrice(row.display_price_usdt);
         const tr = document.createElement("tr");
         tr.innerHTML =
+          "<td><span class=\"trade-symbol mono\">" + escapeHtml(row.symbol) + "</span>" +
+          "<span class=\"trade-sub\">Qty " + escapeHtml(fmtNum(row.quantity, 4)) + "</span></td>" +
           "<td><strong>" + escapeHtml(row.action) + "</strong></td>" +
-          "<td>" + escapeHtml(row.outcome) + "</td>" +
+          "<td><span class=\"trade-pill " + outcomeClass + "\">" + escapeHtml(row.outcome) + "</span></td>" +
           "<td class=\"num mono\">" + escapeHtml(fmtPrice(row.entry_price_usdt)) + "</td>" +
-          "<td class=\"num mono " + (Number(row.pnl_usdt) >= 0 ? "chg up" : "chg down") + "\">" +
+          "<td class=\"num mono\">" + escapeHtml(displayPrice) + "</td>" +
+          "<td class=\"num mono " + (pnl >= 0 ? "chg up" : "chg down") + "\">" +
           escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) +
           "</td>" +
-          "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>";
+          "<td class=\"num mono\">" + escapeHtml(fmtPct((Number(row.confidence) || 0) * 100)) + "</td>" +
+          "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>" +
+          "<td>" + escapeHtml(row.closed_at ? new Date(row.closed_at).toLocaleString() : "—") + "</td>";
         paperTradesBodyEl.appendChild(tr);
       });
     }
 
     async function refreshPaperPortfolio() {
       try {
-        const payload = await fetchJson("/api/trading/paper-portfolio/");
+        const payload = await fetchJson("/api/trading/paper-portfolio/?limit=all");
         const portfolio = payload.portfolio || {};
-        const recentTrades = payload.recent_trades || [];
+        const trades = payload.trades || [];
         const modelMeta = payload.model || {};
-        paperStatusEl.textContent = portfolio.open_position ? "Short open" : "Short-only";
+        const openCount = Number(portfolio.open_positions_count) || 0;
+        paperStatusEl.textContent = openCount > 0
+          ? fmtNum(openCount, 0) + " open"
+          : "Scanning " + fmtNum(payload.tracked_count || 0, 0);
         paperEquityEl.textContent = fmtSignedCurrency(portfolio.equity_inr, "INR");
         paperEquityUsdtEl.textContent = fmtSignedCurrency(portfolio.equity_usdt, "USD");
         paperWinRateEl.textContent = fmtPct((Number(portfolio.win_rate) || 0) * 100);
-        paperClosedCountEl.textContent = "Closed trades: " + fmtNum(portfolio.closed_count, 0);
+        paperClosedCountEl.textContent =
+          "Trades: " + fmtNum(payload.trade_count || trades.length || 0, 0) +
+          " total · open " + fmtNum(openCount, 0) +
+          " · closed " + fmtNum(portfolio.closed_count, 0) +
+          " · scanning " + fmtNum(payload.tracked_count || 0, 0) + " futures";
         paperRealizedEl.textContent = fmtSignedCurrency(portfolio.realized_pnl_inr, "INR");
         paperRealizedUsdtEl.textContent = fmtSignedCurrency(portfolio.realized_pnl_usdt, "USD");
-        paperOpenStateEl.textContent = portfolio.open_position ? "Yes" : "No";
+        if (openCount > 0) {
+          const openSymbols = Array.isArray(portfolio.open_symbols) ? portfolio.open_symbols : [];
+          const shownSymbols = openSymbols.slice(0, 3).join(", ");
+          paperOpenStateEl.textContent =
+            fmtNum(openCount, 0) + (shownSymbols ? " · " + shownSymbols : "");
+        } else {
+          paperOpenStateEl.textContent = "0";
+        }
         paperModelVersionEl.textContent =
-          "Short-only model: " + (modelMeta.model_version || recentTrades[0]?.model_version || "Not trained yet");
+          "Short-only model: " + (modelMeta.model_version || trades[0]?.model_version || "Not trained yet");
         paperSignalTimeEl.textContent =
           "Signal " +
           (payload.market && payload.market.signal_as_of
             ? new Date(payload.market.signal_as_of).toLocaleString()
             : "—");
-        renderPaperTrades(recentTrades);
+        renderPaperTrades(trades);
       } catch (e) {
         paperStatusEl.textContent = "Unavailable";
         paperTradesEmptyEl.hidden = false;

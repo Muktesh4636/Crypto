@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trade Reports</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-alt: #f8fafc;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --up: #059669;
+      --down: #dc2626;
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+      --radius: 22px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    .page-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .hero {
+      flex: 1 1 620px;
+      padding: 1.35rem 1.5rem;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #ffffff, #f8fbff);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      display: inline-flex;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.85rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: clamp(1.7rem, 2.6vw, 2.3rem);
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      max-width: 58rem;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      align-content: flex-start;
+      padding: 1rem;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0.7rem 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .button.primary {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+    }
+    .grid {
+      display: grid;
+      gap: 1rem;
+    }
+    .summary-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      margin-bottom: 1rem;
+    }
+    .triple-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 1rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .metric-card {
+      padding: 1rem 1.1rem;
+    }
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+    .value {
+      display: block;
+      font-size: 1.1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .subtle {
+      display: block;
+      margin-top: 0.2rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .section {
+      padding: 1.1rem;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.9rem;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .section-head p {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 0.25rem 0.6rem;
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+    th, td {
+      padding: 0.75rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+      font-size: 0.9rem;
+    }
+    th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: #fbfdff;
+    }
+    td.num, th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    .trade-pill {
+      display: inline-flex;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 0.18rem 0.45rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--surface-alt);
+    }
+    .trade-pill.open { color: #1d4ed8; background: #dbeafe; border-color: #bfdbfe; }
+    .trade-pill.win { color: var(--up); background: #d1fae5; border-color: #a7f3d0; }
+    .trade-pill.loss { color: var(--down); background: #fee2e2; border-color: #fecaca; }
+    .chg.up { color: var(--up); font-weight: 700; }
+    .chg.down { color: var(--down); font-weight: 700; }
+    .empty {
+      padding: 1rem 0.2rem 0.25rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 1180px) {
+      .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .triple-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .wrap { padding: 1rem 0.8rem 2rem; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .page-head { flex-direction: column; }
+      .actions { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page-head">
+      <div class="hero">
+        <span class="eyebrow">Trade Journal</span>
+        <h1>Trades &amp; Performance Reports</h1>
+        <p class="sub">Review every paper trade on a separate page and measure performance by day, week, and month before making strategy decisions.</p>
+      </div>
+      <div class="actions">
+        <a class="button" href="/">Dashboard</a>
+        <button class="button primary" id="refreshBtn" type="button">Refresh reports</button>
+      </div>
+    </header>
+
+    <section class="grid summary-grid">
+      <div class="card metric-card"><span class="label">Portfolio equity</span><span class="value" id="equityValue">—</span><span class="subtle" id="equitySub">—</span></div>
+      <div class="card metric-card"><span class="label">Open trades</span><span class="value" id="openTradesValue">—</span><span class="subtle" id="openTradesSub">—</span></div>
+      <div class="card metric-card"><span class="label">Realized P&amp;L</span><span class="value" id="realizedValue">—</span><span class="subtle" id="realizedSub">—</span></div>
+      <div class="card metric-card"><span class="label">Today</span><span class="value" id="dailyValue">—</span><span class="subtle" id="dailySub">—</span></div>
+      <div class="card metric-card"><span class="label">This week</span><span class="value" id="weeklyValue">—</span><span class="subtle" id="weeklySub">—</span></div>
+      <div class="card metric-card"><span class="label">This month</span><span class="value" id="monthlyValue">—</span><span class="subtle" id="monthlySub">—</span></div>
+    </section>
+
+    <section class="card section" style="margin-bottom: 1rem;">
+      <div class="section-head">
+        <div>
+          <h2>Open Trades</h2>
+          <p>Live positions with current price, stop loss, take profit, and unrealized P&amp;L.</p>
+        </div>
+        <span class="pill" id="openTradesBadge">Loading</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th class="num">Entry</th>
+              <th class="num">Current</th>
+              <th class="num">Stop</th>
+              <th class="num">Target</th>
+              <th class="num">Confidence</th>
+              <th class="num">P&amp;L</th>
+              <th>Opened</th>
+            </tr>
+          </thead>
+          <tbody id="openTradesBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="openTradesEmpty" hidden>No open trades right now.</p>
+    </section>
+
+    <section class="grid triple-grid">
+      <div class="card section">
+        <div class="section-head">
+          <div><h2>Daily Report</h2><p>Closed-trade performance grouped by day.</p></div>
+          <span class="pill" id="dailyBadge">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Day</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P&amp;L</th></tr>
+            </thead>
+            <tbody id="dailyBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="dailyEmpty" hidden>No daily report yet.</p>
+      </div>
+
+      <div class="card section">
+        <div class="section-head">
+          <div><h2>Weekly Report</h2><p>Closed-trade performance grouped by week.</p></div>
+          <span class="pill" id="weeklyBadge">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Week</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P&amp;L</th></tr>
+            </thead>
+            <tbody id="weeklyBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="weeklyEmpty" hidden>No weekly report yet.</p>
+      </div>
+
+      <div class="card section">
+        <div class="section-head">
+          <div><h2>Monthly Report</h2><p>Closed-trade performance grouped by month.</p></div>
+          <span class="pill" id="monthlyBadge">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Month</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">P&amp;L</th></tr>
+            </thead>
+            <tbody id="monthlyBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="monthlyEmpty" hidden>No monthly report yet.</p>
+      </div>
+    </section>
+
+    <section class="card section" style="margin-top: 1rem;">
+      <div class="section-head">
+        <div>
+          <h2>All Trades</h2>
+          <p>Full paper-trade journal with every entry and exit for review.</p>
+        </div>
+        <span class="pill" id="allTradesBadge">Loading</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th class="num">Entry</th>
+              <th class="num">Exit / Now</th>
+              <th class="num">Confidence</th>
+              <th class="num">P&amp;L</th>
+              <th>Opened</th>
+              <th>Closed</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="allTradesBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="allTradesEmpty" hidden>No trades yet.</p>
+    </section>
+  </div>
+
+  <script>
+    function fmtNum(value, digits) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits ?? 2 });
+    }
+    function fmtPct(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      return n.toFixed(1) + "%";
+    }
+    function fmtPrice(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      let digits = 2;
+      if (Math.abs(n) < 0.001) digits = 6;
+      else if (Math.abs(n) < 1) digits = 4;
+      return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits });
+    }
+    function fmtSignedCurrency(value, currency) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      const sign = n > 0 ? "+" : "";
+      return sign + n.toLocaleString(undefined, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: currency === "INR" ? 2 : 4,
+      });
+    }
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    async function fetchJson(url) {
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) {
+        throw new Error("Request failed with status " + res.status);
+      }
+      return res.json();
+    }
+
+    function renderReportTable(tbodyEl, emptyEl, rows) {
+      tbodyEl.innerHTML = "";
+      if (!rows.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+      emptyEl.hidden = true;
+      rows.forEach(function (row) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + escapeHtml(row.label) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtNum(row.trades, 0)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPct((Number(row.win_rate) || 0) * 100)) + "</td>" +
+          "<td class='num " + ((Number(row.pnl_usdt) || 0) >= 0 ? "chg up" : "chg down") + "'>" +
+            escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) +
+          "</td>";
+        tbodyEl.appendChild(tr);
+      });
+    }
+
+    function renderTrades(tbodyEl, emptyEl, rows) {
+      tbodyEl.innerHTML = "";
+      if (!rows.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+      emptyEl.hidden = true;
+      rows.forEach(function (row) {
+        const pnl = Number(row.pnl_usdt) || 0;
+        const statusClass = row.outcome === "OPEN" ? "open" : row.outcome === "WIN" ? "win" : row.outcome === "LOSS" ? "loss" : "";
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + escapeHtml(row.symbol) + "</td>" +
+          "<td>" + escapeHtml(row.action) + "</td>" +
+          "<td><span class='trade-pill " + statusClass + "'>" + escapeHtml(row.outcome) + "</span></td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.entry_price_usdt)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.display_price_usdt)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPct((Number(row.confidence) || 0) * 100)) + "</td>" +
+          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) + "</td>" +
+          "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>" +
+          "<td>" + escapeHtml(row.closed_at ? new Date(row.closed_at).toLocaleString() : "—") + "</td>" +
+          "<td>" + escapeHtml(row.notes || "—") + "</td>";
+        tbodyEl.appendChild(tr);
+      });
+    }
+
+    function renderOpenTrades(tbodyEl, emptyEl, rows) {
+      tbodyEl.innerHTML = "";
+      if (!rows.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+      emptyEl.hidden = true;
+      rows.forEach(function (row) {
+        const pnl = Number(row.pnl_usdt) || 0;
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + escapeHtml(row.symbol) + "</td>" +
+          "<td>" + escapeHtml(row.action) + "</td>" +
+          "<td><span class='trade-pill open'>OPEN</span></td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.entry_price_usdt)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.display_price_usdt)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.stop_loss_price)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPrice(row.take_profit_price)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPct((Number(row.confidence) || 0) * 100)) + "</td>" +
+          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) + "</td>" +
+          "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>";
+        tbodyEl.appendChild(tr);
+      });
+    }
+
+    async function refreshReports() {
+      const [portfolio, reports] = await Promise.all([
+        fetchJson("/api/trading/paper-portfolio/?limit=all"),
+        fetchJson("/api/trading/performance-report/")
+      ]);
+
+      const allTrades = portfolio.trades || [];
+      const openTrades = allTrades.filter(function (row) { return row.is_open; });
+      const current = reports.current || {};
+      const overview = reports.overview || {};
+      const reportPeriods = reports.periods || {};
+
+      document.getElementById("equityValue").textContent = fmtSignedCurrency(portfolio.portfolio?.equity_inr, "INR");
+      document.getElementById("equitySub").textContent = fmtSignedCurrency(portfolio.portfolio?.equity_usdt, "USD");
+      document.getElementById("openTradesValue").textContent = fmtNum(portfolio.portfolio?.open_positions_count || 0, 0);
+      document.getElementById("openTradesSub").textContent = (portfolio.portfolio?.open_symbols || []).join(", ") || "No symbols open";
+      document.getElementById("realizedValue").textContent = fmtSignedCurrency(overview.realized_pnl_inr, "INR");
+      document.getElementById("realizedSub").textContent = "Win rate " + fmtPct((Number(overview.win_rate) || 0) * 100);
+
+      document.getElementById("dailyValue").textContent = fmtSignedCurrency(current.daily?.pnl_inr, "INR");
+      document.getElementById("dailySub").textContent = fmtNum(current.daily?.trades || 0, 0) + " trades today";
+      document.getElementById("weeklyValue").textContent = fmtSignedCurrency(current.weekly?.pnl_inr, "INR");
+      document.getElementById("weeklySub").textContent = fmtNum(current.weekly?.trades || 0, 0) + " trades this week";
+      document.getElementById("monthlyValue").textContent = fmtSignedCurrency(current.monthly?.pnl_inr, "INR");
+      document.getElementById("monthlySub").textContent = fmtNum(current.monthly?.trades || 0, 0) + " trades this month";
+
+      document.getElementById("openTradesBadge").textContent = fmtNum(openTrades.length, 0) + " open";
+      document.getElementById("allTradesBadge").textContent = fmtNum(portfolio.trade_count || allTrades.length, 0) + " trades";
+      document.getElementById("dailyBadge").textContent = (current.daily && current.daily.label) ? current.daily.label : "No day";
+      document.getElementById("weeklyBadge").textContent = (current.weekly && current.weekly.label) ? current.weekly.label : "No week";
+      document.getElementById("monthlyBadge").textContent = (current.monthly && current.monthly.label) ? current.monthly.label : "No month";
+
+      renderOpenTrades(
+        document.getElementById("openTradesBody"),
+        document.getElementById("openTradesEmpty"),
+        openTrades
+      );
+      renderTrades(
+        document.getElementById("allTradesBody"),
+        document.getElementById("allTradesEmpty"),
+        allTrades
+      );
+      renderReportTable(
+        document.getElementById("dailyBody"),
+        document.getElementById("dailyEmpty"),
+        reportPeriods.daily || []
+      );
+      renderReportTable(
+        document.getElementById("weeklyBody"),
+        document.getElementById("weeklyEmpty"),
+        reportPeriods.weekly || []
+      );
+      renderReportTable(
+        document.getElementById("monthlyBody"),
+        document.getElementById("monthlyEmpty"),
+        reportPeriods.monthly || []
+      );
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", function () {
+      refreshReports().catch(function (err) {
+        alert("Failed to refresh reports: " + err.message);
+      });
+    });
+
+    refreshReports().catch(function (err) {
+      alert("Failed to load reports page: " + err.message);
+    });
+  </script>
+</body>
+</html>

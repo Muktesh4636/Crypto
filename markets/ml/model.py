@@ -20,6 +20,7 @@ MODEL_DIR = Path(
 )
 MODEL_PATH = MODEL_DIR / "signal_model.pkl"
 METADATA_PATH = MODEL_DIR / "signal_model.meta.json"
+MODEL_GLOB = "signal_model_*.meta.json"
 
 
 @dataclass
@@ -114,14 +115,15 @@ class SignalModel:
             model_version=self.model_version,
         )
 
-    def save(self, metadata: Mapping[str, Any] | None = None) -> None:
+    def save(self, metadata: Mapping[str, Any] | None = None, *, symbol: str | None = None) -> None:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        model_path, meta_path = model_paths(symbol)
         payload = {
             "model": self.model,
             "feature_columns": self.feature_columns,
             "model_version": self.model_version,
         }
-        joblib.dump(payload, MODEL_PATH)
+        joblib.dump(payload, model_path)
         meta = {
             "model_version": self.model_version,
             "feature_columns": list(self.feature_columns),
@@ -129,11 +131,14 @@ class SignalModel:
         }
         if metadata:
             meta.update(dict(metadata))
-        METADATA_PATH.write_text(json.dumps(meta, indent=2))
+        if symbol:
+            meta["symbol"] = normalize_model_symbol(symbol)
+        meta_path.write_text(json.dumps(meta, indent=2))
 
     @classmethod
-    def load(cls) -> "SignalModel":
-        payload = joblib.load(MODEL_PATH)
+    def load(cls, symbol: str | None = None) -> "SignalModel":
+        model_path, _ = model_paths(symbol)
+        payload = joblib.load(model_path)
         return cls(
             payload["model"],
             feature_columns=tuple(payload.get("feature_columns", FEATURE_COLUMNS)),
@@ -141,13 +146,48 @@ class SignalModel:
         )
 
     @classmethod
-    def load_if_available(cls) -> "SignalModel | None":
-        if not MODEL_PATH.exists():
+    def load_if_available(cls, symbol: str | None = None) -> "SignalModel | None":
+        model_path, _ = model_paths(symbol)
+        if not model_path.exists():
             return None
-        return cls.load()
+        return cls.load(symbol=symbol)
 
 
-def load_model_metadata() -> dict[str, Any]:
-    if not METADATA_PATH.exists():
+def normalize_model_symbol(symbol: str) -> str:
+    return str(symbol or "").strip().upper()
+
+
+def model_paths(symbol: str | None = None) -> tuple[Path, Path]:
+    normalized = normalize_model_symbol(symbol) if symbol else ""
+    if not normalized:
+        return MODEL_PATH, METADATA_PATH
+    return (
+        MODEL_DIR / f"signal_model_{normalized}.pkl",
+        MODEL_DIR / f"signal_model_{normalized}.meta.json",
+    )
+
+
+def available_model_symbols() -> list[str]:
+    if not MODEL_DIR.exists():
+        return []
+    out: list[str] = []
+    for path in sorted(MODEL_DIR.glob(MODEL_GLOB)):
+        suffix = path.stem.removeprefix("signal_model_").removesuffix(".meta")
+        symbol = normalize_model_symbol(suffix)
+        if symbol:
+            out.append(symbol)
+    return out
+
+
+def load_model_metadata(symbol: str | None = None) -> dict[str, Any]:
+    _, meta_path = model_paths(symbol)
+    if not meta_path.exists():
         return {}
-    return json.loads(METADATA_PATH.read_text())
+    return json.loads(meta_path.read_text())
+
+
+def load_all_model_metadata() -> dict[str, dict[str, Any]]:
+    return {
+        symbol: load_model_metadata(symbol)
+        for symbol in available_model_symbols()
+    }

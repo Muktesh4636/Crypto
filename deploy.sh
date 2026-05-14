@@ -159,9 +159,11 @@ DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-${DOMAIN},127.0.0.1,localhost}"
 DJANGO_CSRF_TRUSTED_ORIGINS="${DJANGO_CSRF_TRUSTED_ORIGINS:-https://${DOMAIN},http://${DOMAIN}}"
 GUARDIAN_API_KEY="${GUARDIAN_API_KEY:-}"
 FRED_API_KEY="${FRED_API_KEY:-}"
-PAPER_TRADER_SYMBOL="${PAPER_TRADER_SYMBOL:-BTCUSDT}"
+PAPER_TRADER_SYMBOL="${PAPER_TRADER_SYMBOL:-}"
+PAPER_TRADER_UNIVERSE="${PAPER_TRADER_UNIVERSE:-20}"
 PAPER_TRADER_INTERVAL="${PAPER_TRADER_INTERVAL:-1h}"
 PAPER_TRADER_MARKET="${PAPER_TRADER_MARKET:-futures}"
+MODEL_TRAIN_UNIVERSE="${MODEL_TRAIN_UNIVERSE:-20}"
 AUTO_RETRAIN_CALENDAR="${AUTO_RETRAIN_CALENDAR:-daily}"
 
 LOCAL_ARCHIVE="$(mktemp "/tmp/${APP_NAME}.XXXXXX.tar.gz")"
@@ -221,7 +223,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=${CURRENT_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${VENV_DIR}/bin/python manage.py run_paper_trader --symbol ${PAPER_TRADER_SYMBOL} --interval ${PAPER_TRADER_INTERVAL} --market ${PAPER_TRADER_MARKET}
+ExecStart=${VENV_DIR}/bin/python manage.py run_paper_trader --universe ${PAPER_TRADER_UNIVERSE} --interval ${PAPER_TRADER_INTERVAL} --market ${PAPER_TRADER_MARKET}
 Restart=always
 RestartSec=10
 StandardOutput=append:${SHARED_DIR}/logs/paper-trader.log
@@ -242,7 +244,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=${CURRENT_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${VENV_DIR}/bin/python manage.py retrain_model --symbol ${PAPER_TRADER_SYMBOL}
+ExecStart=${VENV_DIR}/bin/python manage.py retrain_model
 StandardOutput=append:${SHARED_DIR}/logs/model-retrain.log
 StandardError=append:${SHARED_DIR}/logs/model-retrain.log
 EOF
@@ -350,7 +352,7 @@ ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a
 log "Initial ingest completed"
 
 step "Seeding AI signal model if missing"
-ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if [ ! -f ${SHARED_DIR}/model_store/signal_model.pkl ]; then ${VENV_DIR}/bin/python manage.py seed_model --days 365; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
+ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if ! compgen -G \"${SHARED_DIR}/model_store/signal_model_*.pkl\" > /dev/null; then ${VENV_DIR}/bin/python manage.py seed_model --days 365 --universe ${MODEL_TRAIN_UNIVERSE}; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
 log "AI model ready"
 
 step "Final health check"

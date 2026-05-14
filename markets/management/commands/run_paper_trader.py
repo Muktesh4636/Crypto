@@ -5,14 +5,16 @@ import time
 from django.core.management.base import BaseCommand
 
 from markets.services.fx import get_usd_inr_rate
-from markets.trading.paper_engine import DEFAULT_INTERVAL, DEFAULT_MARKET, DEFAULT_SYMBOL, run_once
+from markets.trading.paper_engine import DEFAULT_INTERVAL, DEFAULT_MARKET, DEFAULT_SYMBOL, DEFAULT_UNIVERSE, run_once
 
 
 class Command(BaseCommand):
-    help = "Run the AI paper trader on a loop (short-only Binance futures, or once with --once)."
+    help = "Run the AI paper trader on a loop (multi-coin short-only Binance futures, or once with --once)."
 
     def add_arguments(self, parser):
-        parser.add_argument("--symbol", type=str, default=DEFAULT_SYMBOL)
+        parser.add_argument("--symbol", type=str, default="")
+        parser.add_argument("--symbols", type=str, default="")
+        parser.add_argument("--universe", type=int, default=DEFAULT_UNIVERSE)
         parser.add_argument("--interval", type=str, default=DEFAULT_INTERVAL)
         parser.add_argument("--market", type=str, default=DEFAULT_MARKET)
         parser.add_argument("--sleep-seconds", type=int, default=60)
@@ -24,11 +26,15 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         symbol = options["symbol"].strip().upper()
+        raw_symbols = options["symbols"].strip()
         interval = options["interval"].strip()
         market = options["market"].strip().lower()
         sleep_seconds = max(5, int(options["sleep_seconds"]))
+        symbols = [item.strip().upper() for item in raw_symbols.split(",") if item.strip()]
         kwargs = {
             "symbol": symbol,
+            "symbols": symbols,
+            "universe": max(1, min(int(options["universe"]), 100)),
             "interval": interval,
             "market": market,
             "risk_fraction": float(options["risk_fraction"]),

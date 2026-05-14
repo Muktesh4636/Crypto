@@ -17,10 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
-from markets.views import DashboardView
+from markets.views import DashboardView, TradingReportsPageView
 
 urlpatterns = [
     path('', DashboardView.as_view(), name='dashboard'),
+    path('reports/', TradingReportsPageView.as_view(), name='trading-reports-page'),
     path('admin/', admin.site.urls),
     path('api/', include('markets.urls')),
 ]

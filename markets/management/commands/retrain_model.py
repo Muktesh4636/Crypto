@@ -9,10 +9,11 @@ class Command(BaseCommand):
     help = "Retrain the signal model using outcomes from the paper-trade journal."
 
     def add_arguments(self, parser):
-        parser.add_argument("--symbol", type=str, default="BTCUSDT")
+        parser.add_argument("--symbol", type=str, default="")
 
     def handle(self, *args, **options):
-        symbol = options["symbol"].strip().upper()
+        symbol_raw = options["symbol"].strip().upper()
+        symbol = symbol_raw or None
         try:
             metrics = retrain_signal_model(symbol=symbol)
         except ValueError as exc:
