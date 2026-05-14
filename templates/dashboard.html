@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crypto markets — Binance top USDT</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-alt: #f8fafc;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --up: #059669;
+      --down: #dc2626;
+      --shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.06);
+      --shadow-md: 0 20px 45px rgba(15, 23, 42, 0.08);
+      --radius: 22px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 15px;
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+    header.page {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .hero-copy {
+      padding: 1.5rem 1.6rem;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      background: linear-gradient(135deg, #ffffff, #f8fbff);
+      box-shadow: var(--shadow-sm);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #1d4ed8;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.9rem;
+    }
+    h1 {
+      font-size: clamp(1.75rem, 2.5vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.4rem;
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 60rem;
+    }
+    .toolbar-panel {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      align-content: flex-start;
+      gap: 0.85rem;
+      padding: 1rem;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.85rem;
+    }
+    label.inline {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.4rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    select, input[type="search"], button {
+      font: inherit;
+      min-height: 42px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0.55rem 0.8rem;
+      color: var(--text);
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    select:hover, input[type="search"]:hover, button:hover {
+      border-color: var(--border-strong);
+    }
+    select:focus-visible, input[type="search"]:focus-visible, button:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+    }
+    input[type="search"] {
+      min-width: 260px;
+      width: min(100%, 320px);
+    }
+    button.primary {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+    }
+    button.primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    button.primary:not(:disabled):hover {
+      filter: brightness(1.04);
+      transform: translateY(-1px);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .paper-card {
+      padding: 1.1rem;
+    }
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .section-sub {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .summary-metric {
+      padding: 0.9rem 1rem;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+    }
+    .summary-metric .label {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .summary-metric .value {
+      display: block;
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .subtle {
+      display: block;
+      margin-top: 0.2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .mono {
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .trade-table table {
+      min-width: 0;
+    }
+    .trade-table td:last-child,
+    .trade-table th:last-child {
+      text-align: right;
+    }
+    .trade-table td {
+      padding-top: 0.7rem;
+      padding-bottom: 0.7rem;
+    }
+    .trade-empty {
+      padding: 1.5rem 0.5rem 0.5rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      text-align: center;
+    }
+    .meta-bar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(to bottom, #ffffff, #fbfdff);
+    }
+    .meta-item {
+      min-width: 0;
+      padding: 0.9rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface-alt);
+    }
+    .meta-label {
+      display: block;
+      margin-bottom: 0.3rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .meta-value {
+      display: block;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+      overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-bar .live-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      align-self: flex-start;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .banner {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+    .banner.error {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+    .banner.loading {
+      background: #eff6ff;
+      color: #1e40af;
+    }
+    .table-wrap {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      min-width: 940px;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      text-align: left;
+      padding: 0.65rem 1rem;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    th.num, td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    tbody tr:nth-child(even) { background: #fbfdff; }
+    tbody tr:hover { background: #eff6ff; }
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: middle;
+    }
+    .coin-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+    .coin-logo {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--bg);
+      object-fit: cover;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+    }
+    .coin-fallback {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e0e7ff, #f3e8ff);
+      color: #4338ca;
+      font-size: 0.5625rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      box-shadow: 0 0 0 1px rgba(67, 56, 202, 0.12);
+    }
+    .sym-mono {
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: #0b1220;
+    }
+    .pair-read {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .pair-sep, .quote {
+      font-weight: 500;
+      color: var(--muted);
+      font-size: 0.8125rem;
+    }
+    .chg.up { color: var(--up); font-weight: 600; }
+    .chg.down { color: var(--down); font-weight: 600; }
+    .empty {
+      padding: 2.5rem 1rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    @media (max-width: 960px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+      header.page {
+        grid-template-columns: 1fr;
+      }
+      .toolbar-panel {
+        width: 100%;
+      }
+      .meta-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 720px) {
+      .wrap {
+        padding: 1.25rem 1rem 2.5rem;
+      }
+      .hero-copy,
+      .toolbar-panel {
+        border-radius: 22px;
+      }
+      .meta-bar {
+        grid-template-columns: 1fr;
+      }
+      thead { display: none; }
+      table, tbody, tr, td { display: block; }
+      table { min-width: 0; }
+      tbody tr {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+        background: #fff;
+      }
+      tbody tr:nth-child(even) { background: var(--surface); }
+      td {
+        padding: 0.2rem 0;
+        border: none;
+      }
+      td.num { text-align: left; }
+      td.num::before {
+        display: inline-block;
+        width: 7rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+      }
+      td:nth-child(1)::before { content: "Rank"; }
+      td:nth-child(2)::before { content: "Coin"; }
+      td:nth-child(3)::before { content: "Pair"; }
+      td:nth-child(4)::before { content: "USDT"; }
+      td:nth-child(5)::before { content: "INR"; }
+      td:nth-child(6)::before { content: "24h"; }
+      td:nth-child(7)::before { content: "Base vol"; }
+      td:nth-child(8)::before { content: "Quote vol"; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page">
+      <div class="hero-copy">
+        <span class="eyebrow">Realtime dashboard</span>
+        <h1>Market overview</h1>
+        <p class="sub">Binance spot markets ranked by 24h USDT volume, with live WebSocket updates, quick symbol search, and INR conversion for a cleaner day-to-day view.</p>
+      </div>
+      <div class="toolbar-panel">
+        <div class="toolbar">
+          <label class="inline">
+            Rows
+            <select id="limit" aria-label="Number of rows">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200" selected>200</option>
+            </select>
+          </label>
+          <label class="inline">
+            Search markets
+            <input type="search" id="q" placeholder="Search BTC, BTCUSDT, SOL..." autocomplete="off" aria-label="Filter symbols">
+          </label>
+          <button type="button" class="primary" id="refresh">Refresh data</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="dashboard-grid">
+      <div class="card paper-card">
+        <div class="card-head">
+          <div>
+            <h2 class="section-title">AI futures short book</h2>
+            <p class="section-sub">Fake capital, short-only futures signals, and trade journaling before risking real money.</p>
+          </div>
+          <span class="pill" id="paperStatus">Loading</span>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-metric">
+            <span class="label">Portfolio equity</span>
+            <span class="value" id="paperEquity">—</span>
+            <span class="subtle mono" id="paperEquityUsdt">—</span>
+          </div>
+          <div class="summary-metric">
+            <span class="label">Win rate</span>
+            <span class="value" id="paperWinRate">—</span>
+            <span class="subtle" id="paperClosedCount">Closed trades: —</span>
+          </div>
+          <div class="summary-metric">
+            <span class="label">Realized P&amp;L</span>
+            <span class="value" id="paperRealized">—</span>
+            <span class="subtle mono" id="paperRealizedUsdt">—</span>
+          </div>
+          <div class="summary-metric">
+            <span class="label">Open position</span>
+            <span class="value" id="paperOpenState">—</span>
+            <span class="subtle" id="paperModelVersion">Short-only model: —</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card paper-card trade-table">
+        <div class="card-head">
+          <div>
+            <h2 class="section-title">Recent futures shorts</h2>
+            <p class="section-sub">Latest simulated short entries/exits from the current futures model version.</p>
+          </div>
+          <span class="pill" id="paperSignalTime">Signal —</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Action</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="num">Entry</th>
+                <th scope="col" class="num">P&amp;L</th>
+                <th scope="col">Opened</th>
+              </tr>
+            </thead>
+            <tbody id="paperTradesBody"></tbody>
+          </table>
+          <p class="trade-empty" id="paperTradesEmpty" hidden>No short trades yet. Train the model, then let the futures paper trader run.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="card" id="card">
+      <div class="meta-bar">
+        <div class="meta-item">
+          <span class="meta-label">Markets</span>
+          <span id="count" class="meta-value">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">FX rate</span>
+          <span id="fx" class="meta-value">INR: —</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Last sync</span>
+          <span id="updated" class="meta-value">Last updated: —</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Connection</span>
+          <span id="live" class="live-tag" aria-live="polite">Live polling</span>
+        </div>
+      </div>
+      <div id="banner" class="banner loading" hidden></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col" class="num">#</th>
+              <th scope="col">Coin</th>
+              <th scope="col">Pair (base / quote)</th>
+              <th scope="col" class="num">Last (USDT)</th>
+              <th scope="col" class="num">Last (₹ INR)</th>
+              <th scope="col" class="num">24h %</th>
+              <th scope="col" class="num">Base volume</th>
+              <th scope="col" class="num">Quote (USDT)</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <p class="empty" id="empty" hidden>No rows match your filter.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tbody = document.getElementById("tbody");
+    const banner = document.getElementById("banner");
+    const empty = document.getElementById("empty");
+    const countEl = document.getElementById("count");
+    const updatedEl = document.getElementById("updated");
+    const limitSel = document.getElementById("limit");
+    const qInput = document.getElementById("q");
+    const refreshBtn = document.getElementById("refresh");
+    const liveEl = document.getElementById("live");
+    const fxEl = document.getElementById("fx");
+    const paperStatusEl = document.getElementById("paperStatus");
+    const paperEquityEl = document.getElementById("paperEquity");
+    const paperEquityUsdtEl = document.getElementById("paperEquityUsdt");
+    const paperWinRateEl = document.getElementById("paperWinRate");
+    const paperClosedCountEl = document.getElementById("paperClosedCount");
+    const paperRealizedEl = document.getElementById("paperRealized");
+    const paperRealizedUsdtEl = document.getElementById("paperRealizedUsdt");
+    const paperOpenStateEl = document.getElementById("paperOpenState");
+    const paperModelVersionEl = document.getElementById("paperModelVersion");
+    const paperSignalTimeEl = document.getElementById("paperSignalTime");
+    const paperTradesBodyEl = document.getElementById("paperTradesBody");
+    const paperTradesEmptyEl = document.getElementById("paperTradesEmpty");
+
+    const BINANCE_MINI_TICKER_WS = "wss://stream.binance.com:9443/ws/!miniTicker@arr";
+
+    let lastResults = [];
+    let tickerMap = new Map();
+    let eligibleSet = new Set();
+    let usdInrRate = null;
+    let binanceWs = null;
+    let wsBackoffMs = 1000;
+    let uiClockId = null;
+    let fxPollId = null;
+    let paperPollId = null;
+    let rowBySymbol = new Map();
+
+    function fmtNum(n, maxFrac) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return "—";
+      return new Intl.NumberFormat(undefined, {
+        maximumFractionDigits: maxFrac,
+        minimumFractionDigits: 0,
+      }).format(x);
+    }
+
+    function fmtPrice(s) {
+      const x = Number(s);
+      if (!Number.isFinite(x)) return "—";
+      const abs = Math.abs(x);
+      const frac = abs >= 1 ? 4 : abs >= 0.01 ? 6 : 8;
+      return fmtNum(x, frac);
+    }
+
+    function fmtPct(s) {
+      const x = Number(s);
+      if (!Number.isFinite(x)) return "—";
+      const sign = x > 0 ? "+" : "";
+      return sign + fmtNum(x, 2) + "%";
+    }
+
+    function fmtSignedCurrency(n, currencyCode) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return "—";
+      const formatter = new Intl.NumberFormat(currencyCode === "INR" ? "en-IN" : undefined, {
+        style: "currency",
+        currency: currencyCode,
+        currencyDisplay: currencyCode === "INR" ? "narrowSymbol" : "symbol",
+        maximumFractionDigits: 2,
+      });
+      if (x > 0) return "+" + formatter.format(x);
+      return formatter.format(x);
+    }
+
+    /** When symbol in static icon sets differs from Binance base (ticker → file slug). */
+    const COIN_ICON_SLUG_ALIASES = {
+      iota: "miota",
+    };
+
+    /** Binance lists scaled units (e.g. 1000SHIB); icon sets use the underlying slug. */
+    function iconSlugsForBaseAsset(baseAsset) {
+      const raw = String(baseAsset ?? "").trim();
+      const lower = raw.toLowerCase();
+      const slugs = [];
+      function add(s) {
+        if (s && slugs.indexOf(s) === -1) slugs.push(s);
+      }
+      var m1000 = /^1000(.+)$/i.exec(raw);
+      if (m1000 && m1000[1]) {
+        add(m1000[1].toLowerCase());
+        add(lower);
+      } else {
+        add(lower);
+      }
+      slugs.slice().forEach(function (s) {
+        if (Object.prototype.hasOwnProperty.call(COIN_ICON_SLUG_ALIASES, s)) {
+          add(COIN_ICON_SLUG_ALIASES[s]);
+        }
+      });
+      return slugs;
+    }
+
+    function coinLogoUrlList(baseAsset) {
+      const urls = [];
+      const seen = {};
+      function push(u) {
+        if (!seen[u]) {
+          seen[u] = true;
+          urls.push(u);
+        }
+      }
+      iconSlugsForBaseAsset(baseAsset).forEach(function (slug) {
+        var enc = encodeURIComponent(slug);
+        push(
+          "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@0.18.1/svg/color/" +
+            enc +
+            ".svg"
+        );
+        push(
+          "https://cdn.jsdelivr.net/gh/vadimmalykhin/binance-icons/crypto/" + enc + ".svg"
+        );
+        push("https://assets.coincap.io/assets/icons/" + enc + "@2x.png");
+      });
+      return urls;
+    }
+
+    function coinMonogram(baseAsset) {
+      const raw = String(baseAsset ?? "").trim();
+      if (!raw) return "?";
+      const letters = raw.replace(/[^A-Za-z]/g, "");
+      var two = letters.length >= 2 ? letters.slice(0, 2) : raw.slice(0, 2);
+      return two.toUpperCase();
+    }
+
+    function buildCoinCell(row) {
+      const wrap = document.createElement("div");
+      wrap.className = "coin-cell";
+      const urls = coinLogoUrlList(row.base_asset);
+      let img = null;
+      var u = 0;
+      function showFallback() {
+        if (wrap.querySelector(".coin-fallback")) return;
+        const fb = document.createElement("span");
+        fb.className = "coin-fallback";
+        fb.setAttribute("aria-hidden", "true");
+        fb.textContent = coinMonogram(row.base_asset);
+        wrap.insertBefore(fb, wrap.firstChild);
+      }
+      function tryNext() {
+        if (!img) return;
+        u += 1;
+        if (u < urls.length) {
+          img.src = urls[u];
+          return;
+        }
+        img.remove();
+        img = null;
+        showFallback();
+      }
+      if (urls.length) {
+        img = document.createElement("img");
+        img.className = "coin-logo";
+        img.alt = "";
+        img.width = 26;
+        img.height = 26;
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.onerror = tryNext;
+        img.src = urls[0];
+        wrap.appendChild(img);
+      } else {
+        showFallback();
+      }
+      const sym = document.createElement("span");
+      sym.className = "sym-mono";
+      sym.textContent = row.symbol;
+      wrap.appendChild(sym);
+      return wrap;
+    }
+
+    function fmtInr(n) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return "—";
+      const abs = Math.abs(x);
+      let maxFrac = 2;
+      if (abs < 0.0001) maxFrac = 8;
+      else if (abs < 0.01) maxFrac = 6;
+      else if (abs < 1) maxFrac = 4;
+      else if (abs < 10000) maxFrac = 3;
+      return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        currencyDisplay: "narrowSymbol",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: maxFrac,
+      }).format(x);
+    }
+
+    function setBanner(kind, text) {
+      banner.hidden = !text;
+      banner.textContent = text || "";
+      banner.className = "banner" + (kind ? " " + kind : "");
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderPaperTrades(rows) {
+      paperTradesBodyEl.innerHTML = "";
+      if (!rows.length) {
+        paperTradesEmptyEl.hidden = false;
+        return;
+      }
+      paperTradesEmptyEl.hidden = true;
+      rows.forEach(function (row) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td><strong>" + escapeHtml(row.action) + "</strong></td>" +
+          "<td>" + escapeHtml(row.outcome) + "</td>" +
+          "<td class=\"num mono\">" + escapeHtml(fmtPrice(row.entry_price_usdt)) + "</td>" +
+          "<td class=\"num mono " + (Number(row.pnl_usdt) >= 0 ? "chg up" : "chg down") + "\">" +
+          escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) +
+          "</td>" +
+          "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>";
+        paperTradesBodyEl.appendChild(tr);
+      });
+    }
+
+    async function refreshPaperPortfolio() {
+      try {
+        const payload = await fetchJson("/api/trading/paper-portfolio/");
+        const portfolio = payload.portfolio || {};
+        const recentTrades = payload.recent_trades || [];
+        const modelMeta = payload.model || {};
+        paperStatusEl.textContent = portfolio.open_position ? "Short open" : "Short-only";
+        paperEquityEl.textContent = fmtSignedCurrency(portfolio.equity_inr, "INR");
+        paperEquityUsdtEl.textContent = fmtSignedCurrency(portfolio.equity_usdt, "USD");
+        paperWinRateEl.textContent = fmtPct((Number(portfolio.win_rate) || 0) * 100);
+        paperClosedCountEl.textContent = "Closed trades: " + fmtNum(portfolio.closed_count, 0);
+        paperRealizedEl.textContent = fmtSignedCurrency(portfolio.realized_pnl_inr, "INR");
+        paperRealizedUsdtEl.textContent = fmtSignedCurrency(portfolio.realized_pnl_usdt, "USD");
+        paperOpenStateEl.textContent = portfolio.open_position ? "Yes" : "No";
+        paperModelVersionEl.textContent =
+          "Short-only model: " + (modelMeta.model_version || recentTrades[0]?.model_version || "Not trained yet");
+        paperSignalTimeEl.textContent =
+          "Signal " +
+          (payload.market && payload.market.signal_as_of
+            ? new Date(payload.market.signal_as_of).toLocaleString()
+            : "—");
+        renderPaperTrades(recentTrades);
+      } catch (e) {
+        paperStatusEl.textContent = "Unavailable";
+        paperTradesEmptyEl.hidden = false;
+        paperTradesEmptyEl.textContent = "Paper portfolio unavailable: " + e.message;
+      }
+    }
+
+    function clearTableModel() {
+      rowBySymbol.clear();
+      tbody.innerHTML = "";
+    }
+
+    function matchesFilter(r, q) {
+      if (!q) return true;
+      const sym = String(r.symbol).toLowerCase();
+      const base = String(r.base_asset).toLowerCase();
+      const quote = String(r.quote_asset || "USDT").toLowerCase();
+      return sym.includes(q) || base.includes(q) || quote.includes(q);
+    }
+
+    function createRowElement(r) {
+      const tr = document.createElement("tr");
+      tr.className = "coin-row";
+      tr.dataset.symbol = r.symbol;
+
+      const tdRank = document.createElement("td");
+      tdRank.className = "num col-rank";
+      tdRank.textContent = "0";
+      tr.appendChild(tdRank);
+
+      const tdCoin = document.createElement("td");
+      tdCoin.className = "col-symbol";
+      tdCoin.appendChild(buildCoinCell(r));
+      tr.appendChild(tdCoin);
+
+      const tdPair = document.createElement("td");
+      tdPair.className = "col-pair";
+      const base = escapeHtml(r.base_asset);
+      const quote = escapeHtml(r.quote_asset || "USDT");
+      tdPair.innerHTML =
+        "<span class=\"pair-read\">" +
+        base +
+        "</span> <span class=\"pair-sep\">/</span> <span class=\"quote\">" +
+        quote +
+        "</span>";
+      tr.appendChild(tdPair);
+
+      const cls = ["col-price", "col-inr", "col-pct", "col-vol", "col-qvol"];
+      for (let i = 0; i < cls.length; i += 1) {
+        const td = document.createElement("td");
+        td.className = "num " + cls[i];
+        tr.appendChild(td);
+      }
+      return tr;
+    }
+
+    function updatePriceCells(tr, r) {
+      tr.cells[3].textContent = fmtPrice(r.last_price);
+      tr.cells[4].textContent = fmtInr(r.last_price_inr);
+      const pct = Number(r.price_change_percent);
+      const chgClass = "chg" + (pct > 0 ? " up" : pct < 0 ? " down" : "");
+      const cPct = tr.cells[5];
+      cPct.textContent = fmtPct(r.price_change_percent);
+      cPct.className = "num col-pct " + chgClass;
+      tr.cells[6].textContent = fmtNum(r.volume, 2);
+      tr.cells[7].textContent = fmtNum(r.quote_volume, 0);
+    }
+
+    function renumberVisibleRanks() {
+      const q = qInput.value.trim().toLowerCase();
+      const rMap = new Map(
+        lastResults.map(function (row) {
+          return [row.symbol, row];
+        })
+      );
+      let n = 0;
+      for (const tr of tbody.querySelectorAll("tr.coin-row")) {
+        const r = rMap.get(tr.dataset.symbol);
+        if (!r) {
+          tr.hidden = true;
+          continue;
+        }
+        const show = matchesFilter(r, q);
+        tr.hidden = !show;
+        if (show) {
+          n += 1;
+          tr.cells[0].textContent = String(n);
+        }
+      }
+      empty.hidden = n > 0;
+    }
+
+    function rerankAndMergeDom() {
+      const limitParsed = parseInt(limitSel.value, 10);
+      const limitNum = Number.isFinite(limitParsed) ? Math.min(Math.max(limitParsed, 1), 500) : 200;
+      const ranked = [...tickerMap.values()]
+        .filter(function (r) {
+          return eligibleSet.has(r.symbol);
+        })
+        .sort(function (a, b) {
+          const qa =
+            typeof a.quote_volume === "number" ? a.quote_volume : parseFloat(String(a.quote_volume)) || 0;
+          const qb =
+            typeof b.quote_volume === "number" ? b.quote_volume : parseFloat(String(b.quote_volume)) || 0;
+          return qb - qa;
+        })
+        .slice(0, limitNum);
+      ranked.forEach(function (r) {
+        const lp = parseFloat(String(r.last_price));
+        r.last_price_inr =
+          typeof usdInrRate === "number" && Number.isFinite(lp) ? lp * usdInrRate : null;
+      });
+      lastResults = ranked;
+      const wanted = new Set(
+        ranked.map(function (r) {
+          return r.symbol;
+        })
+      );
+      for (const sym of [...rowBySymbol.keys()]) {
+        if (!wanted.has(sym)) {
+          const tr = rowBySymbol.get(sym);
+          if (tr && tr.parentNode) tr.remove();
+          rowBySymbol.delete(sym);
+        }
+      }
+      ranked.forEach(function (r) {
+        let tr = rowBySymbol.get(r.symbol);
+        if (!tr) {
+          tr = createRowElement(r);
+          rowBySymbol.set(r.symbol, tr);
+        }
+        updatePriceCells(tr, r);
+        tbody.appendChild(tr);
+      });
+      countEl.textContent = "Showing " + lastResults.length + " markets (WS + seeded REST)";
+      updatedEl.textContent =
+        "Prices updated: " + new Date().toLocaleString(undefined, { timeZoneName: "short" });
+      renumberVisibleRanks();
+    }
+
+    function setLiveState(label, paused) {
+      if (!liveEl) return;
+      liveEl.textContent = label;
+      liveEl.style.opacity = paused ? "0.65" : "1";
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+      const body = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(body.detail || body.error || res.statusText || "HTTP " + res.status);
+      return body;
+    }
+
+    async function refreshFxBanner() {
+      try {
+        const fx = await fetchJson("/api/fx/usd-inr/");
+        if (typeof fx.usd_inr !== "number") throw new Error("No rate");
+        usdInrRate = fx.usd_inr;
+        if (fxEl) {
+          fxEl.textContent =
+            "1 USD ≈ ₹" +
+            fmtNum(fx.usd_inr, 2) +
+            " → USDT price × this rate → INR (indicative)";
+        }
+      } catch (e) {
+        usdInrRate = null;
+        if (fxEl) fxEl.textContent = "INR unavailable (FX)";
+      }
+      if (tbody.querySelector("tr.coin-row")) {
+        rerankAndMergeDom();
+      }
+    }
+
+    function baseAssetFromSymbol(sym) {
+      if (sym.endsWith("USDT")) return sym.slice(0, -4);
+      return sym;
+    }
+
+    function rowFromSeed(r) {
+      return {
+        symbol: r.symbol,
+        base_asset: r.base_asset,
+        quote_asset: r.quote_asset || "USDT",
+        last_price: r.last_price,
+        price_change_percent: r.price_change_percent,
+        open_price: r.open_price,
+        high_price: r.high_price,
+        low_price: r.low_price,
+        volume: r.volume,
+        quote_volume:
+          typeof r.quote_volume === "number" ? r.quote_volume : parseFloat(String(r.quote_volume)) || 0,
+        weighted_avg_price: r.weighted_avg_price,
+        open_time: r.open_time,
+        close_time: r.close_time,
+        count: r.count,
+      };
+    }
+
+    function applyMiniTicker(m) {
+      const sym = m.s;
+      if (!eligibleSet.has(sym)) return;
+      const o = parseFloat(m.o);
+      const c = parseFloat(m.c);
+      var pct = 0;
+      if (o > 0) pct = ((c - o) / o) * 100;
+      tickerMap.set(sym, {
+        symbol: sym,
+        base_asset: baseAssetFromSymbol(sym),
+        quote_asset: "USDT",
+        last_price: m.c,
+        price_change_percent: String(pct),
+        open_price: m.o,
+        high_price: m.h,
+        low_price: m.l,
+        volume: m.v,
+        quote_volume: parseFloat(String(m.q)) || 0,
+        weighted_avg_price: "",
+        open_time: m.E || 0,
+        close_time: 0,
+        count: 0,
+      });
+    }
+
+    async function bootstrapFromRest() {
+      var packs = await Promise.all([
+        fetchJson("/api/coins/eligible/"),
+        fetchJson("/api/coins/top/?limit=500"),
+      ]);
+      eligibleSet = new Set(packs[0].symbols || []);
+      tickerMap.clear();
+      (packs[1].results || []).forEach(function (r) {
+        if (eligibleSet.has(r.symbol)) tickerMap.set(r.symbol, rowFromSeed(r));
+      });
+    }
+
+    function connectBinanceWs() {
+      if (document.hidden || binanceWs) return;
+      try {
+        binanceWs = new WebSocket(BINANCE_MINI_TICKER_WS);
+      } catch (e) {
+        scheduleWsReconnectTimer();
+        return;
+      }
+      binanceWs.onopen = function () {
+        wsBackoffMs = 1000;
+        setLiveState("Live · Binance WS", false);
+      };
+      binanceWs.onmessage = function (ev) {
+        try {
+          var raw = JSON.parse(ev.data);
+          if (!Array.isArray(raw)) return;
+          raw.forEach(applyMiniTicker);
+        } catch (err) {}
+      };
+      binanceWs.onclose = function () {
+        binanceWs = null;
+        if (document.hidden) return;
+        setLiveState("WS reconnecting…", true);
+        var delay = wsBackoffMs;
+        wsBackoffMs = Math.min(wsBackoffMs * 2, 30000);
+        setTimeout(connectBinanceWs, delay);
+      };
+      binanceWs.onerror = function () {
+        try {
+          binanceWs.close();
+        } catch (e3) {}
+      };
+    }
+
+    function scheduleWsReconnectTimer() {
+      if (document.hidden) return;
+      setTimeout(connectBinanceWs, wsBackoffMs);
+      wsBackoffMs = Math.min(wsBackoffMs * 2, 30000);
+    }
+
+    function closeBinanceWs() {
+      if (!binanceWs) return;
+      try {
+        binanceWs.close();
+      } catch (e) {}
+      binanceWs = null;
+    }
+
+    function startClock() {
+      if (uiClockId !== null) return;
+      uiClockId = setInterval(function () {
+        rerankAndMergeDom();
+      }, 1000);
+    }
+
+    function stopClock() {
+      if (uiClockId === null) return;
+      clearInterval(uiClockId);
+      uiClockId = null;
+    }
+
+    function startFxPolling() {
+      if (fxPollId !== null) return;
+      fxPollId = setInterval(refreshFxBanner, 60000);
+    }
+
+    function stopFxPolling() {
+      if (fxPollId === null) return;
+      clearInterval(fxPollId);
+      fxPollId = null;
+    }
+
+    function startPaperPolling() {
+      if (paperPollId !== null) return;
+      paperPollId = setInterval(refreshPaperPortfolio, 60000);
+    }
+
+    function stopPaperPolling() {
+      if (paperPollId === null) return;
+      clearInterval(paperPollId);
+      paperPollId = null;
+    }
+
+    async function initDashboard() {
+      refreshBtn.disabled = true;
+      clearTableModel();
+      setBanner("loading", "Loading Binance snapshot (eligible symbols + REST seed…)");
+      try {
+        await bootstrapFromRest();
+        await refreshFxBanner();
+        setBanner("", "");
+        rerankAndMergeDom();
+      } catch (e) {
+        setBanner("error", "Bootstrap failed: " + e.message);
+        eligibleSet.clear();
+        tickerMap.clear();
+        lastResults = [];
+        clearTableModel();
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    async function refreshAll() {
+      wsBackoffMs = 1000;
+      closeBinanceWs();
+      await initDashboard();
+      if (!document.hidden) connectBinanceWs();
+    }
+
+    async function boot() {
+      await initDashboard();
+      await refreshPaperPortfolio();
+      if (!document.hidden) {
+        connectBinanceWs();
+        startClock();
+        startFxPolling();
+        startPaperPolling();
+      } else {
+        setLiveState("Paused (tab in background)", true);
+      }
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) {
+        closeBinanceWs();
+        stopClock();
+        stopFxPolling();
+        stopPaperPolling();
+        setLiveState("Paused (tab in background)", true);
+        return;
+      }
+      wsBackoffMs = 1000;
+      refreshFxBanner();
+      refreshPaperPortfolio();
+      connectBinanceWs();
+      startClock();
+      startFxPolling();
+      startPaperPolling();
+      rerankAndMergeDom();
+    });
+
+    limitSel.addEventListener("change", rerankAndMergeDom);
+    refreshBtn.addEventListener("click", refreshAll);
+    qInput.addEventListener("input", renumberVisibleRanks);
+
+    boot();
+  </script>
+</body>
+</html>
