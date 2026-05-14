@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 import time
+from datetime import timedelta
 from typing import Any, Mapping
 
 from django.db.models import Sum
@@ -8,7 +10,7 @@ from django.utils import timezone
 
 from markets.ml.model import SignalModel, available_model_symbols
 from markets.models import PaperTrade
-from markets.services.binance import fetch_klines, top_futures_symbols_by_quote_volume
+from markets.services.binance import fetch_historical_klines, top_futures_symbols_by_quote_volume
 from markets.services.features import latest_feature_snapshot
 
 DEFAULT_SYMBOL = "BTCUSDT"
@@ -17,7 +19,11 @@ DEFAULT_MARKET = "futures"
 DEFAULT_UNIVERSE = 15
 STARTING_CAPITAL_INR = 100_000.0
 DEFAULT_USD_INR = 83.0
-LOOKBACK_LIMIT = 400
+PRICE_MEMORY_DAYS = 365 * 3
+SNAPSHOT_REFRESH_SEC = 300
+
+_MARKET_HISTORY_LOCK = threading.Lock()
+_MARKET_HISTORY_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
 
 
 def starting_capital_usdt(usd_inr: float | None = None) -> float:
@@ -25,12 +31,77 @@ def starting_capital_usdt(usd_inr: float | None = None) -> float:
     return STARTING_CAPITAL_INR / float(rate)
 
 
+def _market_cache_key(symbol: str, interval: str, market: str) -> tuple[str, str, str]:
+    return (symbol.strip().upper(), interval.strip(), market.strip().lower())
+
+
+def _price_memory_window_ms() -> tuple[int, int]:
+    end_dt = timezone.now()
+    start_dt = end_dt - timedelta(days=PRICE_MEMORY_DAYS)
+    return int(start_dt.timestamp() * 1000), int(end_dt.timestamp() * 1000)
+
+
+def _merge_klines(existing: list[dict[str, Any]], updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[int, dict[str, Any]] = {
+        int(row["open_time"]): row
+        for row in existing
+    }
+    for row in updates:
+        merged[int(row["open_time"])] = row
+    return [merged[key] for key in sorted(merged)]
+
+
+def _load_price_memory_klines(
+    *,
+    symbol: str,
+    interval: str,
+    market: str,
+) -> list[dict[str, Any]]:
+    start_ms, end_ms = _price_memory_window_ms()
+    cache_key = _market_cache_key(symbol, interval, market)
+    now_mono = time.monotonic()
+    with _MARKET_HISTORY_LOCK:
+        cached = _MARKET_HISTORY_CACHE.get(cache_key)
+    if cached is None:
+        klines = fetch_historical_klines(
+            symbol=symbol,
+            interval=interval,
+            market=market,
+            start_time_ms=start_ms,
+            end_time_ms=end_ms,
+        )
+    else:
+        cached_klines = list(cached.get("klines") or [])
+        if now_mono - float(cached.get("updated_mono", 0.0)) < SNAPSHOT_REFRESH_SEC:
+            return [row for row in cached_klines if int(row["open_time"]) >= start_ms]
+        refresh_start_ms = start_ms
+        if cached_klines:
+            refresh_start_ms = max(start_ms, int(cached_klines[-1]["close_time"]) + 1)
+        updates = fetch_historical_klines(
+            symbol=symbol,
+            interval=interval,
+            market=market,
+            start_time_ms=refresh_start_ms,
+            end_time_ms=end_ms,
+        )
+        klines = _merge_klines(cached_klines, updates)
+    klines = [row for row in klines if int(row["open_time"]) >= start_ms]
+    with _MARKET_HISTORY_LOCK:
+        _MARKET_HISTORY_CACHE[cache_key] = {
+            "klines": klines,
+            "updated_mono": now_mono,
+        }
+    return klines
+
+
 def load_market_snapshot(
     symbol: str = DEFAULT_SYMBOL,
     interval: str = DEFAULT_INTERVAL,
     market: str = DEFAULT_MARKET,
 ) -> dict[str, Any]:
-    klines = fetch_klines(symbol=symbol, interval=interval, market=market, limit=LOOKBACK_LIMIT)
+    klines = _load_price_memory_klines(symbol=symbol, interval=interval, market=market)
+    if not klines:
+        raise RuntimeError(f"No {market} kline history returned for {symbol}.")
     snapshot = latest_feature_snapshot(klines)
     snapshot["symbol"] = symbol
     snapshot["interval"] = interval
@@ -265,8 +336,8 @@ def run_once(
     interval: str = DEFAULT_INTERVAL,
     market: str = DEFAULT_MARKET,
     risk_fraction: float = 0.05,
-    stop_loss_pct: float = 0.02,
-    take_profit_pct: float = 0.04,
+    stop_loss_pct: float = 0.15,
+    take_profit_pct: float = 0.08,
     min_confidence: float = 0.55,
     usd_inr: float | None = None,
 ) -> dict[str, Any]:
@@ -379,8 +450,8 @@ def run_forever(
     market: str = DEFAULT_MARKET,
     sleep_seconds: int = 60,
     risk_fraction: float = 0.05,
-    stop_loss_pct: float = 0.02,
-    take_profit_pct: float = 0.04,
+    stop_loss_pct: float = 0.15,
+    take_profit_pct: float = 0.08,
     min_confidence: float = 0.55,
     usd_inr: float | None = None,
 ) -> None:

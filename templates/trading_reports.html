@@ -25,6 +25,81 @@
       background: var(--bg);
       color: var(--text);
     }
+    .app-shell {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      min-height: 100vh;
+      padding: 1.25rem 1rem;
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+    .sidebar-card {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .sidebar-title {
+      margin: 0 0 0.2rem;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .sidebar-sub {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .nav-group-title {
+      margin: 0 0 0.5rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .nav-link {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.8rem 0.85rem;
+      border-radius: 16px;
+      border: 1px solid transparent;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+    .nav-link:hover {
+      background: var(--surface-alt);
+      border-color: var(--border);
+      transform: translateY(-1px);
+    }
+    .nav-link.active {
+      background: #dbeafe;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .nav-link strong {
+      font-size: 0.95rem;
+    }
+    .nav-link span {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .content {
+      min-width: 0;
+    }
     .wrap {
       max-width: 1380px;
       margin: 0 auto;
@@ -222,6 +297,15 @@
       text-align: center;
     }
     @media (max-width: 1180px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+        min-height: auto;
+        padding: 1rem 1rem 0;
+        border-right: none;
+      }
       .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .triple-grid { grid-template-columns: 1fr; }
     }
@@ -234,12 +318,41 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="page-head">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h2 class="sidebar-title">Crypto Console</h2>
+        <p class="sidebar-sub">Move between dashboard and reporting modules from the left sidebar.</p>
+        <div class="nav-group">
+          <p class="nav-group-title">Modules</p>
+          <nav class="nav-list" aria-label="Sidebar navigation">
+            <a class="nav-link{% if active_module == 'dashboard' %} active{% endif %}" href="/" {% if active_module == 'dashboard' %}aria-current="page"{% endif %}>
+              <strong>Dashboard</strong>
+              <span>Portfolio overview and recent AI trading activity</span>
+            </a>
+            <a class="nav-link{% if active_module == 'all_coins' %} active{% endif %}" href="/all-coins/" {% if active_module == 'all_coins' %}aria-current="page"{% endif %}>
+              <strong>All Coins</strong>
+              <span>Browse the live coin board separately</span>
+            </a>
+            <a class="nav-link{% if active_module == 'trades' %} active{% endif %}" href="/trades/" {% if active_module == 'trades' %}aria-current="page"{% endif %}>
+              <strong>Trades</strong>
+              <span>See every open and closed paper trade</span>
+            </a>
+            <a class="nav-link{% if active_module == 'reports' %} active{% endif %}" href="/reports/" {% if active_module == 'reports' %}aria-current="page"{% endif %}>
+              <strong>Reports</strong>
+              <span>Review daily, weekly, and monthly performance</span>
+            </a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+    <main class="content">
+      <div class="wrap">
+        <header class="page-head">
       <div class="hero">
-        <span class="eyebrow">Trade Journal</span>
-        <h1>Trades &amp; Performance Reports</h1>
-        <p class="sub">Review every paper trade on a separate page and measure performance by day, week, and month before making strategy decisions.</p>
+        <span class="eyebrow">{{ page_eyebrow|default:"Trade Journal" }}</span>
+        <h1>{{ page_title|default:"Trades & Performance Reports" }}</h1>
+        <p class="sub">{{ page_subtitle|default:"Review every paper trade and measure performance before making strategy decisions." }}</p>
       </div>
       <div class="actions">
         <a class="button" href="/">Dashboard</a>
@@ -256,6 +369,7 @@
       <div class="card metric-card"><span class="label">This month</span><span class="value" id="monthlyValue">—</span><span class="subtle" id="monthlySub">—</span></div>
     </section>
 
+    {% if page_mode == "trades" %}
     <section class="card section" style="margin-bottom: 1rem;">
       <div class="section-head">
         <div>
@@ -285,7 +399,9 @@
       </div>
       <p class="empty" id="openTradesEmpty" hidden>No open trades right now.</p>
     </section>
+    {% endif %}
 
+    {% if page_mode == "reports" %}
     <section class="grid triple-grid">
       <div class="card section">
         <div class="section-head">
@@ -335,7 +451,9 @@
         <p class="empty" id="monthlyEmpty" hidden>No monthly report yet.</p>
       </div>
     </section>
+    {% endif %}
 
+    {% if page_mode == "trades" %}
     <section class="card section" style="margin-top: 1rem;">
       <div class="section-head">
         <div>
@@ -365,6 +483,9 @@
       </div>
       <p class="empty" id="allTradesEmpty" hidden>No trades yet.</p>
     </section>
+    {% endif %}
+  </div>
+    </main>
   </div>
 
   <script>
@@ -431,6 +552,15 @@
       });
     }
 
+    function fmtPnlWithPct(row) {
+      const pnlUsd = fmtSignedCurrency(row.pnl_usdt, "USD");
+      const pnlPct = fmtPct(Number(row.pnl_pct) || 0);
+      return (
+        "<div>" + escapeHtml(pnlUsd) + "</div>" +
+        "<span class='subtle'>" + escapeHtml(pnlPct) + "</span>"
+      );
+    }
+
     function renderTrades(tbodyEl, emptyEl, rows) {
       tbodyEl.innerHTML = "";
       if (!rows.length) {
@@ -449,7 +579,7 @@
           "<td class='num'>" + escapeHtml(fmtPrice(row.entry_price_usdt)) + "</td>" +
           "<td class='num'>" + escapeHtml(fmtPrice(row.display_price_usdt)) + "</td>" +
           "<td class='num'>" + escapeHtml(fmtPct((Number(row.confidence) || 0) * 100)) + "</td>" +
-          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) + "</td>" +
+          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + fmtPnlWithPct(row) + "</td>" +
           "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>" +
           "<td>" + escapeHtml(row.closed_at ? new Date(row.closed_at).toLocaleString() : "—") + "</td>" +
           "<td>" + escapeHtml(row.notes || "—") + "</td>";
@@ -476,7 +606,7 @@
           "<td class='num'>" + escapeHtml(fmtPrice(row.stop_loss_price)) + "</td>" +
           "<td class='num'>" + escapeHtml(fmtPrice(row.take_profit_price)) + "</td>" +
           "<td class='num'>" + escapeHtml(fmtPct((Number(row.confidence) || 0) * 100)) + "</td>" +
-          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + escapeHtml(fmtSignedCurrency(row.pnl_usdt, "USD")) + "</td>" +
+          "<td class='num " + (pnl >= 0 ? "chg up" : "chg down") + "'>" + fmtPnlWithPct(row) + "</td>" +
           "<td>" + escapeHtml(new Date(row.opened_at).toLocaleString()) + "</td>";
         tbodyEl.appendChild(tr);
       });
@@ -508,37 +638,52 @@
       document.getElementById("monthlyValue").textContent = fmtSignedCurrency(current.monthly?.pnl_inr, "INR");
       document.getElementById("monthlySub").textContent = fmtNum(current.monthly?.trades || 0, 0) + " trades this month";
 
-      document.getElementById("openTradesBadge").textContent = fmtNum(openTrades.length, 0) + " open";
-      document.getElementById("allTradesBadge").textContent = fmtNum(portfolio.trade_count || allTrades.length, 0) + " trades";
-      document.getElementById("dailyBadge").textContent = (current.daily && current.daily.label) ? current.daily.label : "No day";
-      document.getElementById("weeklyBadge").textContent = (current.weekly && current.weekly.label) ? current.weekly.label : "No week";
-      document.getElementById("monthlyBadge").textContent = (current.monthly && current.monthly.label) ? current.monthly.label : "No month";
+      var openTradesBadgeEl = document.getElementById("openTradesBadge");
+      if (openTradesBadgeEl) openTradesBadgeEl.textContent = fmtNum(openTrades.length, 0) + " open";
+      var allTradesBadgeEl = document.getElementById("allTradesBadge");
+      if (allTradesBadgeEl) allTradesBadgeEl.textContent = fmtNum(portfolio.trade_count || allTrades.length, 0) + " trades";
+      var dailyBadgeEl = document.getElementById("dailyBadge");
+      if (dailyBadgeEl) dailyBadgeEl.textContent = (current.daily && current.daily.label) ? current.daily.label : "No day";
+      var weeklyBadgeEl = document.getElementById("weeklyBadge");
+      if (weeklyBadgeEl) weeklyBadgeEl.textContent = (current.weekly && current.weekly.label) ? current.weekly.label : "No week";
+      var monthlyBadgeEl = document.getElementById("monthlyBadge");
+      if (monthlyBadgeEl) monthlyBadgeEl.textContent = (current.monthly && current.monthly.label) ? current.monthly.label : "No month";
 
-      renderOpenTrades(
-        document.getElementById("openTradesBody"),
-        document.getElementById("openTradesEmpty"),
-        openTrades
-      );
-      renderTrades(
-        document.getElementById("allTradesBody"),
-        document.getElementById("allTradesEmpty"),
-        allTrades
-      );
-      renderReportTable(
-        document.getElementById("dailyBody"),
-        document.getElementById("dailyEmpty"),
-        reportPeriods.daily || []
-      );
-      renderReportTable(
-        document.getElementById("weeklyBody"),
-        document.getElementById("weeklyEmpty"),
-        reportPeriods.weekly || []
-      );
-      renderReportTable(
-        document.getElementById("monthlyBody"),
-        document.getElementById("monthlyEmpty"),
-        reportPeriods.monthly || []
-      );
+      if (document.getElementById("openTradesBody")) {
+        renderOpenTrades(
+          document.getElementById("openTradesBody"),
+          document.getElementById("openTradesEmpty"),
+          openTrades
+        );
+      }
+      if (document.getElementById("allTradesBody")) {
+        renderTrades(
+          document.getElementById("allTradesBody"),
+          document.getElementById("allTradesEmpty"),
+          allTrades
+        );
+      }
+      if (document.getElementById("dailyBody")) {
+        renderReportTable(
+          document.getElementById("dailyBody"),
+          document.getElementById("dailyEmpty"),
+          reportPeriods.daily || []
+        );
+      }
+      if (document.getElementById("weeklyBody")) {
+        renderReportTable(
+          document.getElementById("weeklyBody"),
+          document.getElementById("weeklyEmpty"),
+          reportPeriods.weekly || []
+        );
+      }
+      if (document.getElementById("monthlyBody")) {
+        renderReportTable(
+          document.getElementById("monthlyBody"),
+          document.getElementById("monthlyEmpty"),
+          reportPeriods.monthly || []
+        );
+      }
     }
 
     document.getElementById("refreshBtn").addEventListener("click", function () {

@@ -64,10 +64,14 @@ NEGATIVE_WORDS = {
     "warning",
 }
 MACRO_SERIES_IDS = ("DFF", "CPIAUCSL", "DCOILWTICO")
+NEWS_MEMORY_DAYS = 365 * 3
 FEATURE_COLUMNS = (
     "return_1",
     "return_4",
     "return_24",
+    "return_168",
+    "return_720",
+    "return_2160",
     "rsi_14",
     "macd",
     "macd_signal",
@@ -77,10 +81,27 @@ FEATURE_COLUMNS = (
     "bb_lower",
     "bb_width",
     "volume_ratio_24",
+    "volume_ratio_168",
+    "volume_ratio_720",
     "volatility_24",
+    "volatility_168",
+    "volatility_720",
+    "price_vs_sma_168",
+    "price_vs_sma_720",
+    "price_vs_history_mean",
+    "distance_to_history_high",
+    "distance_to_history_low",
     "news_sentiment_6h",
     "news_sentiment_24h",
+    "news_sentiment_7d",
+    "news_sentiment_30d",
+    "news_sentiment_90d",
+    "news_sentiment_history",
     "news_count_24h",
+    "news_count_7d",
+    "news_count_30d",
+    "news_count_90d",
+    "news_volume_ratio_30d",
     "macro_dff",
     "macro_dff_change_30d",
     "macro_cpi",
@@ -142,6 +163,10 @@ def _bars_for_hours(index: pd.DatetimeIndex, hours: int) -> int:
     return max(1, int(math.ceil((hours * 3600) / _seconds_per_bar(index))))
 
 
+def _bars_for_days(index: pd.DatetimeIndex, days: int) -> int:
+    return _bars_for_hours(index, days * 24)
+
+
 def _resample_rule(index: pd.DatetimeIndex) -> str:
     seconds = _seconds_per_bar(index)
     if seconds % 3600 == 0:
@@ -158,8 +183,21 @@ def _empty_aligned_features(index: pd.DatetimeIndex) -> pd.DataFrame:
 def _news_features(index: pd.DatetimeIndex) -> pd.DataFrame:
     if len(index) == 0:
         return _empty_aligned_features(index)
-    lookback_start = (index.min() - pd.Timedelta(hours=48)).to_pydatetime()
+    lookback_start = (index.min() - pd.Timedelta(days=NEWS_MEMORY_DAYS)).to_pydatetime()
     lookback_end = index.max().to_pydatetime()
+    empty_columns = (
+        "news_sentiment_6h",
+        "news_sentiment_24h",
+        "news_sentiment_7d",
+        "news_sentiment_30d",
+        "news_sentiment_90d",
+        "news_sentiment_history",
+        "news_count_24h",
+        "news_count_7d",
+        "news_count_30d",
+        "news_count_90d",
+        "news_volume_ratio_30d",
+    )
     rows = list(
         NewsArticle.objects.filter(
             published_at__isnull=False,
@@ -170,13 +208,7 @@ def _news_features(index: pd.DatetimeIndex) -> pd.DataFrame:
         .values("published_at", "title", "summary")
     )
     if not rows:
-        return pd.DataFrame(
-            {
-                "news_sentiment_6h": pd.Series(0.0, index=index),
-                "news_sentiment_24h": pd.Series(0.0, index=index),
-                "news_count_24h": pd.Series(0.0, index=index),
-            }
-        )
+        return pd.DataFrame({column: pd.Series(0.0, index=index) for column in empty_columns})
 
     news_frame = pd.DataFrame(rows)
     news_frame["published_at"] = pd.to_datetime(news_frame["published_at"], utc=True)
@@ -193,15 +225,37 @@ def _news_features(index: pd.DatetimeIndex) -> pd.DataFrame:
 
     bars_6h = _bars_for_hours(index, 6)
     bars_24h = _bars_for_hours(index, 24)
+    bars_7d = _bars_for_days(index, 7)
+    bars_30d = _bars_for_days(index, 30)
+    bars_90d = _bars_for_days(index, 90)
+    history_min_bars = bars_30d
     count_6h = scored["news_count"].rolling(bars_6h, min_periods=1).sum()
     count_24h = scored["news_count"].rolling(bars_24h, min_periods=1).sum()
+    count_7d = scored["news_count"].rolling(bars_7d, min_periods=1).sum()
+    count_30d = scored["news_count"].rolling(bars_30d, min_periods=1).sum()
+    count_90d = scored["news_count"].rolling(bars_90d, min_periods=1).sum()
     sum_6h = scored["score_sum"].rolling(bars_6h, min_periods=1).sum()
     sum_24h = scored["score_sum"].rolling(bars_24h, min_periods=1).sum()
+    sum_7d = scored["score_sum"].rolling(bars_7d, min_periods=1).sum()
+    sum_30d = scored["score_sum"].rolling(bars_30d, min_periods=1).sum()
+    sum_90d = scored["score_sum"].rolling(bars_90d, min_periods=1).sum()
+    history_count = scored["news_count"].expanding(min_periods=history_min_bars).sum()
+    history_sum = scored["score_sum"].expanding(min_periods=history_min_bars).sum()
+    history_avg_count = scored["news_count"].expanding(min_periods=history_min_bars).mean()
+    recent_avg_count = scored["news_count"].rolling(bars_30d, min_periods=1).mean()
 
     out = pd.DataFrame(index=index)
     out["news_sentiment_6h"] = np.where(count_6h > 0, sum_6h / count_6h, 0.0)
     out["news_sentiment_24h"] = np.where(count_24h > 0, sum_24h / count_24h, 0.0)
+    out["news_sentiment_7d"] = np.where(count_7d > 0, sum_7d / count_7d, 0.0)
+    out["news_sentiment_30d"] = np.where(count_30d > 0, sum_30d / count_30d, 0.0)
+    out["news_sentiment_90d"] = np.where(count_90d > 0, sum_90d / count_90d, 0.0)
+    out["news_sentiment_history"] = np.where(history_count > 0, history_sum / history_count, 0.0)
     out["news_count_24h"] = count_24h.astype(float)
+    out["news_count_7d"] = count_7d.astype(float)
+    out["news_count_30d"] = count_30d.astype(float)
+    out["news_count_90d"] = count_90d.astype(float)
+    out["news_volume_ratio_30d"] = (recent_avg_count / history_avg_count.replace(0, np.nan)).fillna(0.0)
     return out
 
 
@@ -265,8 +319,18 @@ def build_feature_frame(klines: Sequence[dict]) -> pd.DataFrame:
     frame["return_1"] = close.pct_change(1)
     frame["return_4"] = close.pct_change(4)
     frame["return_24"] = close.pct_change(24)
+    bars_7d = _bars_for_days(frame.index, 7)
+    bars_30d = _bars_for_days(frame.index, 30)
+    bars_90d = _bars_for_days(frame.index, 90)
+    frame["return_168"] = close.pct_change(bars_7d)
+    frame["return_720"] = close.pct_change(bars_30d)
+    frame["return_2160"] = close.pct_change(bars_90d)
     frame["volatility_24"] = close.pct_change().rolling(24, min_periods=3).std()
+    frame["volatility_168"] = close.pct_change().rolling(bars_7d, min_periods=max(24, bars_7d // 3)).std()
+    frame["volatility_720"] = close.pct_change().rolling(bars_30d, min_periods=max(bars_7d, bars_30d // 3)).std()
     frame["volume_ratio_24"] = volume / volume.rolling(24, min_periods=3).mean()
+    frame["volume_ratio_168"] = volume / volume.rolling(bars_7d, min_periods=max(24, bars_7d // 3)).mean()
+    frame["volume_ratio_720"] = volume / volume.rolling(bars_30d, min_periods=max(bars_7d, bars_30d // 3)).mean()
     frame["rsi_14"] = ta.rsi(close, length=14)
 
     macd = ta.macd(close, fast=12, slow=26, signal=9)
@@ -289,6 +353,17 @@ def build_feature_frame(klines: Sequence[dict]) -> pd.DataFrame:
         frame["bb_middle"] = np.nan
         frame["bb_upper"] = np.nan
     frame["bb_width"] = (frame["bb_upper"] - frame["bb_lower"]) / frame["bb_middle"].replace(0, np.nan)
+    sma_168 = close.rolling(bars_7d, min_periods=max(24, bars_7d // 3)).mean()
+    sma_720 = close.rolling(bars_30d, min_periods=max(bars_7d, bars_30d // 3)).mean()
+    history_min_bars = max(24, bars_30d // 3)
+    history_mean = close.expanding(min_periods=history_min_bars).mean()
+    history_high = close.expanding(min_periods=history_min_bars).max()
+    history_low = close.expanding(min_periods=history_min_bars).min()
+    frame["price_vs_sma_168"] = close / sma_168 - 1.0
+    frame["price_vs_sma_720"] = close / sma_720 - 1.0
+    frame["price_vs_history_mean"] = close / history_mean - 1.0
+    frame["distance_to_history_high"] = close / history_high - 1.0
+    frame["distance_to_history_low"] = close / history_low - 1.0
 
     news_features = _news_features(frame.index)
     macro_features = _macro_series(frame.index)

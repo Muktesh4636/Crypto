@@ -33,9 +33,75 @@ def _news_item_json(item: dict) -> dict:
 class DashboardView(TemplateView):
     template_name = "dashboard.html"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "active_module": "dashboard",
+                "page_eyebrow": "Overview",
+                "page_title": "Trading dashboard",
+                "page_subtitle": (
+                    "Track the portfolio, recent AI paper-trading activity, and the live market board from one place."
+                ),
+            }
+        )
+        return context
+
+
+class AllCoinsPageView(TemplateView):
+    template_name = "dashboard.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "active_module": "all_coins",
+                "page_eyebrow": "Market board",
+                "page_title": "All coins",
+                "page_subtitle": (
+                    "Browse Binance coin data separately from the dashboard, with ranking, search, and live refresh."
+                ),
+            }
+        )
+        return context
+
 
 class TradingReportsPageView(TemplateView):
     template_name = "trading_reports.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "active_module": "reports",
+                "page_mode": "reports",
+                "page_eyebrow": "Performance review",
+                "page_title": "Performance Reports",
+                "page_subtitle": (
+                    "Review daily, weekly, and monthly performance summaries before making strategy decisions."
+                ),
+            }
+        )
+        return context
+
+
+class TradesPageView(TemplateView):
+    template_name = "trading_reports.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "active_module": "trades",
+                "page_mode": "trades",
+                "page_eyebrow": "Trade journal",
+                "page_title": "Trades",
+                "page_subtitle": (
+                    "Inspect every open and closed paper trade on its own page with live status and trade details."
+                ),
+            }
+        )
+        return context
 
 
 class HealthView(APIView):
@@ -236,15 +302,20 @@ class PriceMoversView(APIView):
 
 class TopBinanceCoinsView(APIView):
     """
-    Top Binance spot USDT markets by 24h quote volume (default 200).
+    Binance spot USDT markets by 24h quote volume.
+    Supports `?limit=all` to return the full eligible Binance list.
     """
 
     def get(self, request):
-        try:
-            limit = int(request.query_params.get("limit", 200))
-        except (TypeError, ValueError):
-            limit = 200
-        limit = max(1, min(limit, 500))
+        raw_limit = request.query_params.get("limit", "").strip().lower()
+        if raw_limit in {"", "all"}:
+            limit = None
+        else:
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError):
+                limit = 200
+            limit = max(1, min(limit, 5000))
 
         try:
             data = fetch_top_coins_by_quote_volume(limit=limit)
@@ -260,6 +331,7 @@ class TopBinanceCoinsView(APIView):
             {
                 "source": "binance_spot",
                 "ranked_by": "quote_volume_24h_usdt",
+                "limit": "all" if limit is None else limit,
                 "fx": fx_meta,
                 "count": len(data),
                 "results": ser.data,
@@ -278,8 +350,11 @@ def _paper_trade_json(
     live_price = (current_prices or {}).get(row.symbol)
     if is_open and live_price is not None:
         pnl_usdt = trade_pnl_usdt(row, live_price)
+        notional_usdt = float(row.quantity or 0.0) * float(row.entry_price_usdt or 0.0)
+        pnl_pct = (pnl_usdt / notional_usdt) * 100.0 if notional_usdt > 0 else 0.0
     else:
         pnl_usdt = row.pnl_usdt
+        pnl_pct = row.pnl_pct
     display_price_usdt = live_price if is_open and live_price is not None else row.exit_price_usdt
     return {
         "id": row.id,
@@ -293,7 +368,7 @@ def _paper_trade_json(
         "display_price_usdt": display_price_usdt,
         "pnl_usdt": pnl_usdt,
         "pnl_inr": pnl_usdt * rate,
-        "pnl_pct": row.pnl_pct,
+        "pnl_pct": pnl_pct,
         "confidence": row.confidence,
         "stop_loss_price": row.stop_loss_price,
         "take_profit_price": row.take_profit_price,

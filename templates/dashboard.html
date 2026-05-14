@@ -31,6 +31,81 @@
       font-size: 15px;
       min-height: 100vh;
     }
+    .app-shell {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      min-height: 100vh;
+      padding: 1.25rem 1rem;
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+    .sidebar-card {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+    }
+    .sidebar-title {
+      margin: 0 0 0.2rem;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .sidebar-sub {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .nav-group-title {
+      margin: 0 0 0.5rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .nav-link {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.8rem 0.85rem;
+      border-radius: 16px;
+      border: 1px solid transparent;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+    .nav-link:hover {
+      background: var(--surface-alt);
+      border-color: var(--border);
+      transform: translateY(-1px);
+    }
+    .nav-link.active {
+      background: var(--accent-soft);
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .nav-link strong {
+      font-size: 0.95rem;
+    }
+    .nav-link span {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .content {
+      min-width: 0;
+    }
     .wrap {
       max-width: 1280px;
       margin: 0 auto;
@@ -458,6 +533,15 @@
       font-size: 0.95rem;
     }
     @media (max-width: 960px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+        min-height: auto;
+        padding: 1rem 1rem 0;
+        border-right: none;
+      }
       .dashboard-grid {
         grid-template-columns: 1fr;
       }
@@ -515,12 +599,41 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="page">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h2 class="sidebar-title">Crypto Console</h2>
+        <p class="sidebar-sub">Navigate between your main trading modules from one place.</p>
+        <div class="nav-group">
+          <p class="nav-group-title">Modules</p>
+          <nav class="nav-list" aria-label="Sidebar navigation">
+            <a href="/" class="nav-link{% if active_module == 'dashboard' %} active{% endif %}"{% if active_module == 'dashboard' %} aria-current="page"{% endif %}>
+              <strong>Dashboard</strong>
+              <span>Portfolio overview and recent AI trading activity</span>
+            </a>
+            <a href="/all-coins/" class="nav-link{% if active_module == 'all_coins' %} active{% endif %}"{% if active_module == 'all_coins' %} aria-current="page"{% endif %}>
+              <strong>All Coins</strong>
+              <span>Browse the live coin board separately</span>
+            </a>
+            <a href="/trades/" class="nav-link">
+              <strong>Trades</strong>
+              <span>See every open and closed paper trade</span>
+            </a>
+            <a href="/reports/" class="nav-link">
+              <strong>Reports</strong>
+              <span>Review daily, weekly, and monthly performance</span>
+            </a>
+          </nav>
+        </div>
+      </div>
+    </aside>
+    <main class="content">
+      <div class="wrap">
+        <header class="page">
       <div class="hero-copy">
-        <span class="eyebrow">Realtime dashboard</span>
-        <h1>Market overview</h1>
-        <p class="sub">Binance spot markets ranked by 24h USDT volume, with live WebSocket updates, quick symbol search, and INR conversion for a cleaner day-to-day view.</p>
+        <span class="eyebrow">{{ page_eyebrow|default:"Overview" }}</span>
+        <h1>{{ page_title|default:"Trading dashboard" }}</h1>
+        <p class="sub">{{ page_subtitle|default:"Track the portfolio, recent AI paper-trading activity, and the live market board from one place." }}</p>
       </div>
       <div class="toolbar-panel">
         <div class="toolbar">
@@ -529,7 +642,9 @@
             <select id="limit" aria-label="Number of rows">
               <option value="50">50</option>
               <option value="100">100</option>
-              <option value="200" selected>200</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+              <option value="all" selected>All</option>
             </select>
           </label>
           <label class="inline">
@@ -537,11 +652,13 @@
             <input type="search" id="q" placeholder="Search BTC, BTCUSDT, SOL..." autocomplete="off" aria-label="Filter symbols">
           </label>
           <button type="button" class="primary" id="refresh">Refresh data</button>
-          <a href="/reports/" class="secondary-link">Trades &amp; reports</a>
+          <a href="/trades/" class="secondary-link">Trades</a>
+          <a href="/reports/" class="secondary-link">Reports</a>
         </div>
       </div>
     </header>
 
+    {% if active_module == 'dashboard' %}
     <section class="dashboard-grid">
       <div class="card paper-card">
         <div class="card-head">
@@ -604,6 +721,7 @@
         </div>
       </div>
     </section>
+    {% endif %}
 
     <div class="card" id="card">
       <div class="meta-bar">
@@ -645,6 +763,8 @@
       </div>
     </div>
   </div>
+    </main>
+  </div>
 
   <script>
     const tbody = document.getElementById("tbody");
@@ -669,6 +789,7 @@
     const paperSignalTimeEl = document.getElementById("paperSignalTime");
     const paperTradesBodyEl = document.getElementById("paperTradesBody");
     const paperTradesEmptyEl = document.getElementById("paperTradesEmpty");
+    const hasPaperWidgets = Boolean(paperStatusEl);
 
     const BINANCE_MINI_TICKER_WS = "wss://stream.binance.com:9443/ws/!miniTicker@arr";
 
@@ -896,6 +1017,7 @@
     }
 
     async function refreshPaperPortfolio() {
+      if (!hasPaperWidgets) return;
       try {
         const payload = await fetchJson("/api/trading/paper-portfolio/?limit=all");
         const portfolio = payload.portfolio || {};
@@ -1024,8 +1146,14 @@
     }
 
     function rerankAndMergeDom() {
-      const limitParsed = parseInt(limitSel.value, 10);
-      const limitNum = Number.isFinite(limitParsed) ? Math.min(Math.max(limitParsed, 1), 500) : 200;
+      const rawLimit = String(limitSel.value || "").trim().toLowerCase();
+      const limitParsed = parseInt(rawLimit, 10);
+      const limitNum =
+        rawLimit === "all"
+          ? Number.MAX_SAFE_INTEGER
+          : Number.isFinite(limitParsed)
+            ? Math.max(limitParsed, 1)
+            : 200;
       const ranked = [...tickerMap.values()]
         .filter(function (r) {
           return eligibleSet.has(r.symbol);
@@ -1159,7 +1287,7 @@
     async function bootstrapFromRest() {
       var packs = await Promise.all([
         fetchJson("/api/coins/eligible/"),
-        fetchJson("/api/coins/top/?limit=500"),
+        fetchJson("/api/coins/top/?limit=all"),
       ]);
       eligibleSet = new Set(packs[0].symbols || []);
       tickerMap.clear();
@@ -1280,12 +1408,14 @@
 
     async function boot() {
       await initDashboard();
-      await refreshPaperPortfolio();
+      if (hasPaperWidgets) {
+        await refreshPaperPortfolio();
+      }
       if (!document.hidden) {
         connectBinanceWs();
         startClock();
         startFxPolling();
-        startPaperPolling();
+        if (hasPaperWidgets) startPaperPolling();
       } else {
         setLiveState("Paused (tab in background)", true);
       }
@@ -1296,17 +1426,17 @@
         closeBinanceWs();
         stopClock();
         stopFxPolling();
-        stopPaperPolling();
+        if (hasPaperWidgets) stopPaperPolling();
         setLiveState("Paused (tab in background)", true);
         return;
       }
       wsBackoffMs = 1000;
       refreshFxBanner();
-      refreshPaperPortfolio();
+      if (hasPaperWidgets) refreshPaperPortfolio();
       connectBinanceWs();
       startClock();
       startFxPolling();
-      startPaperPolling();
+      if (hasPaperWidgets) startPaperPolling();
       rerankAndMergeDom();
     });
 

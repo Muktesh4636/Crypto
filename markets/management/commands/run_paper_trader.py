@@ -19,8 +19,8 @@ class Command(BaseCommand):
         parser.add_argument("--market", type=str, default=DEFAULT_MARKET)
         parser.add_argument("--sleep-seconds", type=int, default=60)
         parser.add_argument("--risk-fraction", type=float, default=0.05)
-        parser.add_argument("--stop-loss-pct", type=float, default=0.02)
-        parser.add_argument("--take-profit-pct", type=float, default=0.04)
+        parser.add_argument("--stop-loss-pct", type=float, default=0.15)
+        parser.add_argument("--take-profit-pct", type=float, default=0.08)
         parser.add_argument("--min-confidence", type=float, default=0.55)
         parser.add_argument("--once", action="store_true")
 

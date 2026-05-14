@@ -348,11 +348,11 @@ ssh_run "
 log "Services reloaded"
 
 step "Warming initial stored data"
-ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; ${VENV_DIR}/bin/python manage.py ingest_news --max-total 120 --per-feed 40 || true; if [ -n "${FRED_API_KEY:-}" ]; then ${VENV_DIR}/bin/python manage.py ingest_fred_macro --days 365 || true; fi'"
+ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; ${VENV_DIR}/bin/python manage.py ingest_news --max-total 120 --per-feed 40 || true; if [ -n "${FRED_API_KEY:-}" ]; then ${VENV_DIR}/bin/python manage.py ingest_fred_macro --days 1095 || true; fi'"
 log "Initial ingest completed"
 
 step "Seeding AI signal model if missing"
-ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if ! compgen -G \"${SHARED_DIR}/model_store/signal_model_*.pkl\" > /dev/null; then ${VENV_DIR}/bin/python manage.py seed_model --days 365 --universe ${MODEL_TRAIN_UNIVERSE}; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
+ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if ! compgen -G \"${SHARED_DIR}/model_store/signal_model_*.pkl\" > /dev/null; then ${VENV_DIR}/bin/python manage.py seed_model --days 1095 --universe ${MODEL_TRAIN_UNIVERSE}; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
 log "AI model ready"
 
 step "Final health check"

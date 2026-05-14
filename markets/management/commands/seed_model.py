@@ -8,7 +8,13 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score
 
 from markets.ml.model import SignalModel
 from markets.services.binance import fetch_historical_klines, top_futures_symbols_by_quote_volume
-from markets.services.features import FEATURE_COLUMNS, attach_direction_target, build_feature_frame, prepare_model_frame
+from markets.services.features import (
+    FEATURE_COLUMNS,
+    NEWS_MEMORY_DAYS,
+    attach_direction_target,
+    build_feature_frame,
+    prepare_model_frame,
+)
 
 
 class Command(BaseCommand):
@@ -19,7 +25,7 @@ class Command(BaseCommand):
         parser.add_argument("--symbols", type=str, default="")
         parser.add_argument("--universe", type=int, default=15)
         parser.add_argument("--interval", type=str, default="1h")
-        parser.add_argument("--days", type=int, default=365 * 2)
+        parser.add_argument("--days", type=int, default=365 * 3)
         parser.add_argument("--horizon-bars", type=int, default=6)
         parser.add_argument("--sell-threshold", type=float, default=-0.006)
 
@@ -101,6 +107,8 @@ class Command(BaseCommand):
                 "strategy_mode": "short_only",
                 "analysis_mode": "per_symbol",
                 "days": days,
+                "price_memory_days": days,
+                "news_memory_days": NEWS_MEMORY_DAYS,
                 "universe": universe,
                 "horizon_bars": horizon_bars,
                 "sell_threshold": sell_threshold,

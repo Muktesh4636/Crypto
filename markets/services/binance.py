@@ -101,11 +101,12 @@ def eligible_usdt_futures_symbols(timeout: float = 20.0) -> frozenset[str]:
     return _eligible_futures_usdt_symbols(timeout)
 
 
-def fetch_top_coins_by_quote_volume(limit: int = 200, timeout: float = 20.0) -> list[dict]:
+def fetch_top_coins_by_quote_volume(limit: int | None = None, timeout: float = 20.0) -> list[dict]:
     """
-    Return the top `limit` Binance **spot** USDT pairs by 24h quote volume (USDT).
+    Return Binance **spot** USDT pairs ranked by 24h quote volume (USDT).
+    When `limit` is None, return the full eligible universe.
     """
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError("limit must be >= 1")
 
     symbols = _eligible_spot_usdt_symbols(timeout=timeout)
@@ -143,7 +144,7 @@ def fetch_top_coins_by_quote_volume(limit: int = 200, timeout: float = 20.0) -> 
         )
 
     rows.sort(key=lambda x: x["quote_volume"], reverse=True)
-    return rows[:limit]
+    return rows if limit is None else rows[:limit]
 
 
 def fetch_top_futures_by_quote_volume(limit: int = 200, timeout: float = 20.0) -> list[dict]:
