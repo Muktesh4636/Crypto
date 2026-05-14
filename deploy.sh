@@ -132,6 +132,8 @@ if [[ "${MODE}" == "status" ]]; then
     systemctl is-active ${PAPER_SERVICE_NAME} || true
     printf '  ${RETRAIN_TIMER_NAME}: '
     systemctl is-active ${RETRAIN_TIMER_NAME} || true
+    printf '  postgresql: '
+    systemctl is-active postgresql || true
     printf '  nginx: '
     systemctl is-active nginx || true
     echo ''
@@ -159,6 +161,11 @@ DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-${DOMAIN},127.0.0.1,localhost}"
 DJANGO_CSRF_TRUSTED_ORIGINS="${DJANGO_CSRF_TRUSTED_ORIGINS:-https://${DOMAIN},http://${DOMAIN}}"
 GUARDIAN_API_KEY="${GUARDIAN_API_KEY:-}"
 FRED_API_KEY="${FRED_API_KEY:-}"
+POSTGRES_DB="${POSTGRES_DB:-crypto_dashboard}"
+POSTGRES_USER="${POSTGRES_USER:-crypto_dashboard}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(make_secret)}"
+POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 PAPER_TRADER_SYMBOL="${PAPER_TRADER_SYMBOL:-}"
 PAPER_TRADER_UNIVERSE="${PAPER_TRADER_UNIVERSE:-20}"
 PAPER_TRADER_INTERVAL="${PAPER_TRADER_INTERVAL:-1h}"
@@ -183,7 +190,11 @@ DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
 DJANGO_DEBUG=${DJANGO_DEBUG}
 DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
 DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}
-SQLITE_PATH=${SHARED_DIR}/db.sqlite3
+POSTGRES_DB=${POSTGRES_DB}
+POSTGRES_USER=${POSTGRES_USER}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+POSTGRES_HOST=${POSTGRES_HOST}
+POSTGRES_PORT=${POSTGRES_PORT}
 STATIC_ROOT=${SHARED_DIR}/static
 SIGNAL_MODEL_DIR=${SHARED_DIR}/model_store
 GUARDIAN_API_KEY=${GUARDIAN_API_KEY}
@@ -300,7 +311,7 @@ step "Installing system packages"
 ssh_run "
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq python3 python3-pip python3-venv nginx curl
+  apt-get install -y -qq python3 python3-pip python3-venv nginx curl postgresql postgresql-contrib
 "
 log "System packages ready"
 
@@ -321,6 +332,28 @@ ssh_run "
   chown -R www-data:www-data ${APP_DIR}
 "
 log "Application files ready"
+
+step "Provisioning PostgreSQL"
+ssh_run "
+  set -e
+  systemctl enable postgresql >/dev/null 2>&1 || true
+  systemctl restart postgresql
+  su postgres -c \"psql <<'SQL'
+DO \\\$\\\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${POSTGRES_USER}') THEN
+    CREATE ROLE ${POSTGRES_USER} LOGIN PASSWORD '${POSTGRES_PASSWORD}';
+  ELSE
+    ALTER ROLE ${POSTGRES_USER} WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
+  END IF;
+END
+\\\$\\\$;
+SQL\"
+  [ \"\$(su postgres -c \"psql -tAc \\\"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\\\"\" | tr -d '[:space:]')\" = \"1\" ] || \
+    su postgres -c \"createdb -O ${POSTGRES_USER} ${POSTGRES_DB}\"
+  su postgres -c \"psql -c \\\"GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};\\\"\"
+"
+log "PostgreSQL ready"
 
 step "Running Django migrations and collecting static files"
 ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; ${VENV_DIR}/bin/python manage.py migrate --noinput; ${VENV_DIR}/bin/python manage.py collectstatic --noinput'"

@@ -41,7 +41,7 @@ class DashboardView(TemplateView):
                 "page_eyebrow": "Overview",
                 "page_title": "Trading dashboard",
                 "page_subtitle": (
-                    "Track the portfolio, recent AI paper-trading activity, and the live market board from one place."
+                    "Review only the core dashboard metrics: available coins, active trades, and day, week, month, and year performance."
                 ),
             }
         )
@@ -388,6 +388,8 @@ def _performance_period_start(dt, period: str) -> date:
         return day - timedelta(days=day.weekday())
     if period == "monthly":
         return day.replace(day=1)
+    if period == "yearly":
+        return day.replace(month=1, day=1)
     raise ValueError(f"Unknown period: {period}")
 
 
@@ -399,6 +401,8 @@ def _performance_period_label(start: date, period: str) -> str:
         return f"{iso.year}-W{iso.week:02d}"
     if period == "monthly":
         return start.strftime("%Y-%m")
+    if period == "yearly":
+        return start.strftime("%Y")
     raise ValueError(f"Unknown period: {period}")
 
 
@@ -478,6 +482,8 @@ def _current_period_snapshot(
         current_start = today - timedelta(days=today.weekday())
     elif period == "monthly":
         current_start = today.replace(day=1)
+    elif period == "yearly":
+        current_start = today.replace(month=1, day=1)
     else:
         raise ValueError(f"Unknown period: {period}")
     for row in rows:
@@ -523,6 +529,52 @@ def _overall_performance_summary(closed_trades: list[PaperTrade], *, usd_inr: fl
         "best_trade_usdt": max(pnl_values) if pnl_values else 0.0,
         "worst_trade_usdt": min(pnl_values) if pnl_values else 0.0,
     }
+
+
+class DashboardSummaryView(APIView):
+    """Compact dashboard metrics without market-board or trade-table payloads."""
+
+    def get(self, request):
+        try:
+            usd_inr = get_usd_inr_rate()
+        except (requests.RequestException, KeyError, TypeError, ValueError):
+            usd_inr = None
+
+        closed_qs = PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN).order_by("-closed_at", "-opened_at")
+        open_qs = PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN).order_by("-opened_at")
+        closed_trades = list(closed_qs)
+
+        daily_rows = _build_performance_rows(closed_trades, period="daily", usd_inr=usd_inr)
+        weekly_rows = _build_performance_rows(closed_trades, period="weekly", usd_inr=usd_inr)
+        monthly_rows = _build_performance_rows(closed_trades, period="monthly", usd_inr=usd_inr)
+        yearly_rows = _build_performance_rows(closed_trades, period="yearly", usd_inr=usd_inr)
+
+        try:
+            coin_count = len(eligible_usdt_spot_symbols())
+        except requests.RequestException:
+            coin_count = 0
+
+        active_symbols = list(open_qs.values_list("symbol", flat=True).distinct())
+        overview = _overall_performance_summary(closed_trades, usd_inr=usd_inr)
+
+        return Response(
+            {
+                "coin_count": coin_count,
+                "active_trades": open_qs.count(),
+                "active_symbols": active_symbols,
+                "overview": {
+                    **overview,
+                    "open_trades": open_qs.count(),
+                    "total_trades": len(closed_trades) + open_qs.count(),
+                },
+                "current": {
+                    "daily": _current_period_snapshot(daily_rows, period="daily", usd_inr=usd_inr),
+                    "weekly": _current_period_snapshot(weekly_rows, period="weekly", usd_inr=usd_inr),
+                    "monthly": _current_period_snapshot(monthly_rows, period="monthly", usd_inr=usd_inr),
+                    "yearly": _current_period_snapshot(yearly_rows, period="yearly", usd_inr=usd_inr),
+                },
+            }
+        )
 
 
 class PaperPortfolioView(APIView):

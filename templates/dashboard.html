@@ -249,6 +249,11 @@
       gap: 1rem;
       margin-bottom: 1rem;
     }
+    .dashboard-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
     .paper-card {
       padding: 1.1rem;
     }
@@ -316,6 +321,43 @@
       margin-top: 0.2rem;
       color: var(--muted);
       font-size: 0.8rem;
+    }
+    .dashboard-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .dashboard-period-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .dashboard-period-card {
+      padding: 1.1rem;
+    }
+    .period-list {
+      display: grid;
+      gap: 0.7rem;
+      margin-top: 1rem;
+    }
+    .period-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+    .period-row strong {
+      color: var(--text);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .period-row strong.up {
+      color: var(--up);
+    }
+    .period-row strong.down {
+      color: var(--down);
     }
     .mono {
       font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
@@ -542,7 +584,9 @@
         padding: 1rem 1rem 0;
         border-right: none;
       }
-      .dashboard-grid {
+      .dashboard-grid,
+      .dashboard-summary-grid,
+      .dashboard-period-grid {
         grid-template-columns: 1fr;
       }
       header.page {
@@ -635,6 +679,7 @@
         <h1>{{ page_title|default:"Trading dashboard" }}</h1>
         <p class="sub">{{ page_subtitle|default:"Track the portfolio, recent AI paper-trading activity, and the live market board from one place." }}</p>
       </div>
+      {% if active_module != 'dashboard' %}
       <div class="toolbar-panel">
         <div class="toolbar">
           <label class="inline">
@@ -656,73 +701,105 @@
           <a href="/reports/" class="secondary-link">Reports</a>
         </div>
       </div>
+      {% endif %}
     </header>
 
     {% if active_module == 'dashboard' %}
-    <section class="dashboard-grid">
-      <div class="card paper-card">
-        <div class="card-head">
-          <div>
-            <h2 class="section-title">AI futures short scanner</h2>
-            <p class="section-sub">Fake capital, short-only futures signals, and cross-coin scanning before risking real money.</p>
-          </div>
-          <span class="pill" id="paperStatus">Loading</span>
+    <div class="dashboard-actions">
+      <button type="button" class="primary" id="dashboardRefresh">Refresh dashboard</button>
+    </div>
+    <section id="dashboardSummary">
+      <div class="dashboard-summary-grid">
+        <div class="summary-metric">
+          <span class="label">Coins Available</span>
+          <span class="value" id="dashboardCoinCount">—</span>
+          <span class="subtle">Binance USDT pairs</span>
         </div>
-        <div class="summary-grid">
-          <div class="summary-metric">
-            <span class="label">Portfolio equity</span>
-            <span class="value" id="paperEquity">—</span>
-            <span class="subtle mono" id="paperEquityUsdt">—</span>
-          </div>
-          <div class="summary-metric">
-            <span class="label">Win rate</span>
-            <span class="value" id="paperWinRate">—</span>
-            <span class="subtle" id="paperClosedCount">Closed trades: —</span>
-          </div>
-          <div class="summary-metric">
-            <span class="label">Realized P&amp;L</span>
-            <span class="value" id="paperRealized">—</span>
-            <span class="subtle mono" id="paperRealizedUsdt">—</span>
-          </div>
-          <div class="summary-metric">
-            <span class="label">Open positions</span>
-            <span class="value" id="paperOpenState">—</span>
-            <span class="subtle" id="paperModelVersion">Short-only model: —</span>
-          </div>
+        <div class="summary-metric">
+          <span class="label">Active Trades</span>
+          <span class="value" id="dashboardActiveTrades">—</span>
+          <span class="subtle" id="dashboardActiveSymbols">No active positions</span>
+        </div>
+        <div class="summary-metric">
+          <span class="label">Total Wins</span>
+          <span class="value" id="dashboardWins">—</span>
+          <span class="subtle">Closed winning trades</span>
+        </div>
+        <div class="summary-metric">
+          <span class="label">Total Losses</span>
+          <span class="value" id="dashboardLosses">—</span>
+          <span class="subtle">Closed losing trades</span>
         </div>
       </div>
 
-      <div class="card paper-card trade-table">
-        <div class="card-head">
-          <div>
-            <h2 class="section-title">All futures trades</h2>
-            <p class="section-sub">Every paper short entry and exit, with live status, prices, confidence, and P&amp;L.</p>
+      <div class="dashboard-period-grid">
+        <div class="card dashboard-period-card">
+          <div class="card-head">
+            <div>
+              <h2 class="section-title">Today</h2>
+              <p class="section-sub">Current day trade performance.</p>
+            </div>
+            <span class="pill" id="dailyLabel">—</span>
           </div>
-          <span class="pill" id="paperSignalTime">Signal —</span>
+          <div class="period-list">
+            <div class="period-row"><span>Total trades</span><strong id="dailyTrades">—</strong></div>
+            <div class="period-row"><span>Win trades</span><strong id="dailyWins">—</strong></div>
+            <div class="period-row"><span>Loss trades</span><strong id="dailyLosses">—</strong></div>
+            <div class="period-row"><span>Win rate</span><strong id="dailyWinRate">—</strong></div>
+            <div class="period-row"><span>P&amp;L</span><strong id="dailyPnl">—</strong></div>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col">Action</th>
-                <th scope="col">Status</th>
-                <th scope="col" class="num">Entry</th>
-                <th scope="col" class="num">Exit / Now</th>
-                <th scope="col" class="num">P&amp;L</th>
-                <th scope="col" class="num">Confidence</th>
-                <th scope="col">Opened</th>
-                <th scope="col">Closed</th>
-              </tr>
-            </thead>
-            <tbody id="paperTradesBody"></tbody>
-          </table>
-          <p class="trade-empty" id="paperTradesEmpty" hidden>No short trades yet. Train the model, then let the futures paper trader run.</p>
+        <div class="card dashboard-period-card">
+          <div class="card-head">
+            <div>
+              <h2 class="section-title">This Week</h2>
+              <p class="section-sub">Current week trade performance.</p>
+            </div>
+            <span class="pill" id="weeklyLabel">—</span>
+          </div>
+          <div class="period-list">
+            <div class="period-row"><span>Total trades</span><strong id="weeklyTrades">—</strong></div>
+            <div class="period-row"><span>Win trades</span><strong id="weeklyWins">—</strong></div>
+            <div class="period-row"><span>Loss trades</span><strong id="weeklyLosses">—</strong></div>
+            <div class="period-row"><span>Win rate</span><strong id="weeklyWinRate">—</strong></div>
+            <div class="period-row"><span>P&amp;L</span><strong id="weeklyPnl">—</strong></div>
+          </div>
+        </div>
+        <div class="card dashboard-period-card">
+          <div class="card-head">
+            <div>
+              <h2 class="section-title">This Month</h2>
+              <p class="section-sub">Current month trade performance.</p>
+            </div>
+            <span class="pill" id="monthlyLabel">—</span>
+          </div>
+          <div class="period-list">
+            <div class="period-row"><span>Total trades</span><strong id="monthlyTrades">—</strong></div>
+            <div class="period-row"><span>Win trades</span><strong id="monthlyWins">—</strong></div>
+            <div class="period-row"><span>Loss trades</span><strong id="monthlyLosses">—</strong></div>
+            <div class="period-row"><span>Win rate</span><strong id="monthlyWinRate">—</strong></div>
+            <div class="period-row"><span>P&amp;L</span><strong id="monthlyPnl">—</strong></div>
+          </div>
+        </div>
+        <div class="card dashboard-period-card">
+          <div class="card-head">
+            <div>
+              <h2 class="section-title">This Year</h2>
+              <p class="section-sub">Current year trade performance.</p>
+            </div>
+            <span class="pill" id="yearlyLabel">—</span>
+          </div>
+          <div class="period-list">
+            <div class="period-row"><span>Total trades</span><strong id="yearlyTrades">—</strong></div>
+            <div class="period-row"><span>Win trades</span><strong id="yearlyWins">—</strong></div>
+            <div class="period-row"><span>Loss trades</span><strong id="yearlyLosses">—</strong></div>
+            <div class="period-row"><span>Win rate</span><strong id="yearlyWinRate">—</strong></div>
+            <div class="period-row"><span>P&amp;L</span><strong id="yearlyPnl">—</strong></div>
+          </div>
         </div>
       </div>
     </section>
-    {% endif %}
-
+    {% else %}
     <div class="card" id="card">
       <div class="meta-bar">
         <div class="meta-item">
@@ -762,6 +839,7 @@
         <p class="empty" id="empty" hidden>No rows match your filter.</p>
       </div>
     </div>
+    {% endif %}
   </div>
     </main>
   </div>
@@ -789,7 +867,12 @@
     const paperSignalTimeEl = document.getElementById("paperSignalTime");
     const paperTradesBodyEl = document.getElementById("paperTradesBody");
     const paperTradesEmptyEl = document.getElementById("paperTradesEmpty");
+    const dashboardSummaryEl = document.getElementById("dashboardSummary");
+    const dashboardRefreshBtn = document.getElementById("dashboardRefresh");
     const hasPaperWidgets = Boolean(paperStatusEl);
+    const hasMarketBoard = Boolean(
+      tbody && banner && empty && countEl && updatedEl && limitSel && qInput && refreshBtn && liveEl && fxEl
+    );
 
     const BINANCE_MINI_TICKER_WS = "wss://stream.binance.com:9443/ws/!miniTicker@arr";
 
@@ -802,6 +885,7 @@
     let uiClockId = null;
     let fxPollId = null;
     let paperPollId = null;
+    let dashboardPollId = null;
     let rowBySymbol = new Map();
 
     function fmtNum(n, maxFrac) {
@@ -839,6 +923,45 @@
       });
       if (x > 0) return "+" + formatter.format(x);
       return formatter.format(x);
+    }
+
+    function setText(id, value, className) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = value;
+      if (className !== undefined) {
+        el.className = className;
+      }
+    }
+
+    function renderDashboardPeriod(prefix, row) {
+      const pnl = Number(row && row.pnl_usdt) || 0;
+      const pnlClass = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
+      setText(prefix + "Label", row && row.label ? row.label : "—");
+      setText(prefix + "Trades", fmtNum(row && row.trades, 0));
+      setText(prefix + "Wins", fmtNum(row && row.wins, 0));
+      setText(prefix + "Losses", fmtNum(row && row.losses, 0));
+      setText(prefix + "WinRate", fmtPct((Number(row && row.win_rate) || 0) * 100));
+      setText(prefix + "Pnl", fmtSignedCurrency(row && row.pnl_usdt, "USD"), pnlClass ? "mono " + pnlClass : "mono");
+    }
+
+    async function refreshDashboardSummary() {
+      if (!dashboardSummaryEl) return;
+      const payload = await fetchJson("/api/dashboard/summary/");
+      const overview = payload.overview || {};
+      const activeSymbols = Array.isArray(payload.active_symbols) ? payload.active_symbols : [];
+      setText("dashboardCoinCount", fmtNum(payload.coin_count, 0));
+      setText("dashboardActiveTrades", fmtNum(payload.active_trades, 0));
+      setText(
+        "dashboardActiveSymbols",
+        activeSymbols.length ? activeSymbols.slice(0, 4).join(", ") : "No active positions"
+      );
+      setText("dashboardWins", fmtNum(overview.wins, 0));
+      setText("dashboardLosses", fmtNum(overview.losses, 0));
+      renderDashboardPeriod("daily", payload.current && payload.current.daily);
+      renderDashboardPeriod("weekly", payload.current && payload.current.weekly);
+      renderDashboardPeriod("monthly", payload.current && payload.current.monthly);
+      renderDashboardPeriod("yearly", payload.current && payload.current.yearly);
     }
 
     /** When symbol in static icon sets differs from Binance base (ticker → file slug). */
@@ -1061,6 +1184,7 @@
     }
 
     function clearTableModel() {
+      if (!tbody) return;
       rowBySymbol.clear();
       tbody.innerHTML = "";
     }
@@ -1122,6 +1246,7 @@
     }
 
     function renumberVisibleRanks() {
+      if (!hasMarketBoard) return;
       const q = qInput.value.trim().toLowerCase();
       const rMap = new Map(
         lastResults.map(function (row) {
@@ -1146,6 +1271,7 @@
     }
 
     function rerankAndMergeDom() {
+      if (!hasMarketBoard) return;
       const rawLimit = String(limitSel.value || "").trim().toLowerCase();
       const limitParsed = parseInt(rawLimit, 10);
       const limitNum =
@@ -1215,6 +1341,7 @@
     }
 
     async function refreshFxBanner() {
+      if (!hasMarketBoard) return;
       try {
         const fx = await fetchJson("/api/fx/usd-inr/");
         if (typeof fx.usd_inr !== "number") throw new Error("No rate");
@@ -1379,7 +1506,21 @@
       paperPollId = null;
     }
 
+    function startDashboardPolling() {
+      if (dashboardPollId !== null || !dashboardSummaryEl) return;
+      dashboardPollId = setInterval(function () {
+        refreshDashboardSummary().catch(function () {});
+      }, 60000);
+    }
+
+    function stopDashboardPolling() {
+      if (dashboardPollId === null) return;
+      clearInterval(dashboardPollId);
+      dashboardPollId = null;
+    }
+
     async function initDashboard() {
+      if (!hasMarketBoard) return;
       refreshBtn.disabled = true;
       clearTableModel();
       setBanner("loading", "Loading Binance snapshot (eligible symbols + REST seed…)");
@@ -1400,6 +1541,7 @@
     }
 
     async function refreshAll() {
+      if (!hasMarketBoard) return;
       wsBackoffMs = 1000;
       closeBinanceWs();
       await initDashboard();
@@ -1407,6 +1549,11 @@
     }
 
     async function boot() {
+      if (dashboardSummaryEl) {
+        await refreshDashboardSummary();
+        if (!document.hidden) startDashboardPolling();
+        return;
+      }
       await initDashboard();
       if (hasPaperWidgets) {
         await refreshPaperPortfolio();
@@ -1422,6 +1569,15 @@
     }
 
     document.addEventListener("visibilitychange", function () {
+      if (dashboardSummaryEl) {
+        if (document.hidden) {
+          stopDashboardPolling();
+          return;
+        }
+        refreshDashboardSummary().catch(function () {});
+        startDashboardPolling();
+        return;
+      }
       if (document.hidden) {
         closeBinanceWs();
         stopClock();
@@ -1440,11 +1596,24 @@
       rerankAndMergeDom();
     });
 
-    limitSel.addEventListener("change", rerankAndMergeDom);
-    refreshBtn.addEventListener("click", refreshAll);
-    qInput.addEventListener("input", renumberVisibleRanks);
+    if (limitSel) limitSel.addEventListener("change", rerankAndMergeDom);
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshAll);
+    if (qInput) qInput.addEventListener("input", renumberVisibleRanks);
+    if (dashboardRefreshBtn) {
+      dashboardRefreshBtn.addEventListener("click", function () {
+        refreshDashboardSummary().catch(function (err) {
+          alert("Failed to refresh dashboard: " + err.message);
+        });
+      });
+    }
 
-    boot();
+    boot().catch(function (err) {
+      if (dashboardSummaryEl) {
+        setText("dashboardActiveSymbols", "Dashboard unavailable: " + err.message);
+        return;
+      }
+      setBanner("error", "Dashboard unavailable: " + err.message);
+    });
   </script>
 </body>
 </html>
