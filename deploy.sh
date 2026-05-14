@@ -16,12 +16,14 @@ VENV_DIR="${APP_DIR}/venv"
 ENV_FILE="${SHARED_DIR}/app.env"
 SERVICE_NAME="${APP_NAME}"
 PAPER_SERVICE_NAME="${APP_NAME}-paper-trader"
+FLOW_SERVICE_NAME="${APP_NAME}-futures-flow"
 RETRAIN_SERVICE_NAME="${APP_NAME}-model-retrain"
 RETRAIN_TIMER_NAME="${RETRAIN_SERVICE_NAME}.timer"
 REMOTE_ARCHIVE="/tmp/${APP_NAME}.tar.gz"
 REMOTE_ENV="/tmp/${APP_NAME}.env"
 REMOTE_SERVICE="/tmp/${SERVICE_NAME}.service"
 REMOTE_PAPER_SERVICE="/tmp/${PAPER_SERVICE_NAME}.service"
+REMOTE_FLOW_SERVICE="/tmp/${FLOW_SERVICE_NAME}.service"
 REMOTE_RETRAIN_SERVICE="/tmp/${RETRAIN_SERVICE_NAME}.service"
 REMOTE_RETRAIN_TIMER="/tmp/${RETRAIN_TIMER_NAME}"
 REMOTE_NGINX="/tmp/${DOMAIN}.nginx"
@@ -50,7 +52,7 @@ case "${1:-}" in
 esac
 
 cleanup() {
-  rm -f "${LOCAL_ARCHIVE:-}" "${LOCAL_ENV:-}" "${LOCAL_SERVICE:-}" "${LOCAL_PAPER_SERVICE:-}" "${LOCAL_RETRAIN_SERVICE:-}" "${LOCAL_RETRAIN_TIMER:-}" "${LOCAL_NGINX:-}"
+  rm -f "${LOCAL_ARCHIVE:-}" "${LOCAL_ENV:-}" "${LOCAL_SERVICE:-}" "${LOCAL_PAPER_SERVICE:-}" "${LOCAL_FLOW_SERVICE:-}" "${LOCAL_RETRAIN_SERVICE:-}" "${LOCAL_RETRAIN_TIMER:-}" "${LOCAL_NGINX:-}"
 }
 trap cleanup EXIT
 
@@ -130,6 +132,8 @@ if [[ "${MODE}" == "status" ]]; then
     systemctl is-active ${SERVICE_NAME} || true
     printf '  ${PAPER_SERVICE_NAME}: '
     systemctl is-active ${PAPER_SERVICE_NAME} || true
+    printf '  ${FLOW_SERVICE_NAME}: '
+    systemctl is-active ${FLOW_SERVICE_NAME} || true
     printf '  ${RETRAIN_TIMER_NAME}: '
     systemctl is-active ${RETRAIN_TIMER_NAME} || true
     printf '  postgresql: '
@@ -170,6 +174,11 @@ PAPER_TRADER_SYMBOL="${PAPER_TRADER_SYMBOL:-}"
 PAPER_TRADER_UNIVERSE="${PAPER_TRADER_UNIVERSE:-20}"
 PAPER_TRADER_INTERVAL="${PAPER_TRADER_INTERVAL:-1h}"
 PAPER_TRADER_MARKET="${PAPER_TRADER_MARKET:-futures}"
+FUTURES_FLOW_UNIVERSE="${FUTURES_FLOW_UNIVERSE:-0}"
+FUTURES_FLOW_BATCH_SIZE="${FUTURES_FLOW_BATCH_SIZE:-15}"
+FUTURES_FLOW_RATIO_PERIOD="${FUTURES_FLOW_RATIO_PERIOD:-5m}"
+FUTURES_FLOW_KLINE_INTERVAL="${FUTURES_FLOW_KLINE_INTERVAL:-1h}"
+FUTURES_FLOW_SLEEP_SECONDS="${FUTURES_FLOW_SLEEP_SECONDS:-60}"
 MODEL_TRAIN_UNIVERSE="${MODEL_TRAIN_UNIVERSE:-20}"
 AUTO_RETRAIN_CALENDAR="${AUTO_RETRAIN_CALENDAR:-daily}"
 
@@ -177,6 +186,7 @@ LOCAL_ARCHIVE="$(mktemp "/tmp/${APP_NAME}.XXXXXX.tar.gz")"
 LOCAL_ENV="$(mktemp "/tmp/${APP_NAME}.XXXXXX.env")"
 LOCAL_SERVICE="$(mktemp "/tmp/${SERVICE_NAME}.XXXXXX.service")"
 LOCAL_PAPER_SERVICE="$(mktemp "/tmp/${PAPER_SERVICE_NAME}.XXXXXX.service")"
+LOCAL_FLOW_SERVICE="$(mktemp "/tmp/${FLOW_SERVICE_NAME}.XXXXXX.service")"
 LOCAL_RETRAIN_SERVICE="$(mktemp "/tmp/${RETRAIN_SERVICE_NAME}.XXXXXX.service")"
 LOCAL_RETRAIN_TIMER="$(mktemp "/tmp/${RETRAIN_TIMER_NAME}.XXXXXX")"
 LOCAL_NGINX="$(mktemp "/tmp/${DOMAIN}.XXXXXX.nginx")"
@@ -244,6 +254,27 @@ StandardError=append:${SHARED_DIR}/logs/paper-trader.log
 WantedBy=multi-user.target
 EOF
 
+cat > "${LOCAL_FLOW_SERVICE}" <<EOF
+[Unit]
+Description=Crypto dashboard Binance futures flow collector
+After=network.target ${SERVICE_NAME}.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=${CURRENT_DIR}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${VENV_DIR}/bin/python manage.py collect_futures_flow --universe ${FUTURES_FLOW_UNIVERSE} --batch-size ${FUTURES_FLOW_BATCH_SIZE} --ratio-period ${FUTURES_FLOW_RATIO_PERIOD} --kline-interval ${FUTURES_FLOW_KLINE_INTERVAL} --sleep-seconds ${FUTURES_FLOW_SLEEP_SECONDS}
+Restart=always
+RestartSec=10
+StandardOutput=append:${SHARED_DIR}/logs/futures-flow.log
+StandardError=append:${SHARED_DIR}/logs/futures-flow.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat > "${LOCAL_RETRAIN_SERVICE}" <<EOF
 [Unit]
 Description=Crypto dashboard model retraining job
@@ -302,6 +333,7 @@ scp_up "${LOCAL_ARCHIVE}" "${REMOTE_ARCHIVE}"
 scp_up "${LOCAL_ENV}" "${REMOTE_ENV}"
 scp_up "${LOCAL_SERVICE}" "${REMOTE_SERVICE}"
 scp_up "${LOCAL_PAPER_SERVICE}" "${REMOTE_PAPER_SERVICE}"
+scp_up "${LOCAL_FLOW_SERVICE}" "${REMOTE_FLOW_SERVICE}"
 scp_up "${LOCAL_RETRAIN_SERVICE}" "${REMOTE_RETRAIN_SERVICE}"
 scp_up "${LOCAL_RETRAIN_TIMER}" "${REMOTE_RETRAIN_TIMER}"
 scp_up "${LOCAL_NGINX}" "${REMOTE_NGINX}"
@@ -364,6 +396,7 @@ ssh_run "
   set -e
   mv ${REMOTE_SERVICE} /etc/systemd/system/${SERVICE_NAME}.service
   mv ${REMOTE_PAPER_SERVICE} /etc/systemd/system/${PAPER_SERVICE_NAME}.service
+  mv ${REMOTE_FLOW_SERVICE} /etc/systemd/system/${FLOW_SERVICE_NAME}.service
   mv ${REMOTE_RETRAIN_SERVICE} /etc/systemd/system/${RETRAIN_SERVICE_NAME}.service
   mv ${REMOTE_RETRAIN_TIMER} /etc/systemd/system/${RETRAIN_TIMER_NAME}
   mv ${REMOTE_NGINX} ${NGINX_SITE}
@@ -371,10 +404,11 @@ ssh_run "
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl daemon-reload
-  systemctl enable ${SERVICE_NAME} ${PAPER_SERVICE_NAME} ${RETRAIN_TIMER_NAME} nginx
+  systemctl enable ${SERVICE_NAME} ${PAPER_SERVICE_NAME} ${FLOW_SERVICE_NAME} ${RETRAIN_TIMER_NAME} nginx
   fuser -k ${APP_PORT}/tcp 2>/dev/null || true
   systemctl restart ${SERVICE_NAME}
   systemctl stop ${PAPER_SERVICE_NAME} || true
+  systemctl restart ${FLOW_SERVICE_NAME}
   systemctl restart ${RETRAIN_TIMER_NAME}
   systemctl reload nginx
 "

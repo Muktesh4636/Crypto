@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .ml.model import available_model_symbols, load_all_model_metadata, load_model_metadata
-from .models import NewsArticle, PaperTrade
+from .models import FuturesFlowSnapshot, NewsArticle, PaperTrade
 from .serializers import BinanceTickerSerializer
 from .services.analysis import movers_by_daily_change_pct
 from .services.binance import (
@@ -247,6 +247,69 @@ class MacroFredView(APIView):
                 "series_requested": series_ids,
                 "points_returned": sum(len(v) for v in by_series.values()),
                 "series": by_series,
+            }
+        )
+
+
+class FuturesFlowSnapshotView(APIView):
+    """Stored Binance futures flow snapshots for later analysis."""
+
+    def get(self, request):
+        symbol = request.query_params.get("symbol", "").strip().upper()
+        try:
+            limit = int(request.query_params.get("limit", 100))
+        except (TypeError, ValueError):
+            limit = 100
+        limit = max(1, min(limit, 1000))
+        try:
+            hours = int(request.query_params.get("hours", 24))
+        except (TypeError, ValueError):
+            hours = 24
+        hours = max(1, min(hours, 24 * 90))
+
+        qs = FuturesFlowSnapshot.objects.order_by("-bucket_time", "symbol")
+        if symbol:
+            qs = qs.filter(symbol=symbol)
+        if hours:
+            qs = qs.filter(bucket_time__gte=timezone.now() - timedelta(hours=hours))
+        total = qs.count()
+        rows = list(qs[:limit])
+
+        return Response(
+            {
+                "provider": "binance_futures",
+                "symbol_filter": symbol or None,
+                "hours": hours,
+                "limit": limit,
+                "stored_total": total,
+                "results": [
+                    {
+                        "symbol": row.symbol,
+                        "bucket_time": row.bucket_time.isoformat(),
+                        "observed_at": row.observed_at.isoformat(),
+                        "ratio_period": row.ratio_period,
+                        "kline_interval": row.kline_interval,
+                        "last_price": row.last_price,
+                        "mark_price": row.mark_price,
+                        "open_interest_contracts": row.open_interest_contracts,
+                        "open_interest_value_usdt": row.open_interest_value_usdt,
+                        "last_funding_rate": row.last_funding_rate,
+                        "quote_volume_24h": row.quote_volume_24h,
+                        "trade_count_24h": row.trade_count_24h,
+                        "global_long_short_ratio": row.global_long_short_ratio,
+                        "top_trader_long_short_account_ratio": row.top_trader_long_short_account_ratio,
+                        "top_trader_long_short_position_ratio": row.top_trader_long_short_position_ratio,
+                        "taker_buy_sell_ratio": row.taker_buy_sell_ratio,
+                        "taker_buy_volume": row.taker_buy_volume,
+                        "taker_sell_volume": row.taker_sell_volume,
+                        "recent_bar_quote_volume": row.recent_bar_quote_volume,
+                        "recent_bar_trade_count": row.recent_bar_trade_count,
+                        "recent_bar_taker_buy_quote_volume": row.recent_bar_taker_buy_quote_volume,
+                        "recent_bar_taker_sell_quote_volume": row.recent_bar_taker_sell_quote_volume,
+                        "recent_bar_taker_buy_ratio": row.recent_bar_taker_buy_ratio,
+                    }
+                    for row in rows
+                ],
             }
         )
 

@@ -83,6 +83,12 @@ FEATURE_COLUMNS = (
     "volume_ratio_24",
     "volume_ratio_168",
     "volume_ratio_720",
+    "quote_volume_ratio_24",
+    "trade_count_ratio_24",
+    "avg_trade_size_ratio_24",
+    "taker_buy_ratio_24",
+    "taker_buy_ratio_168",
+    "taker_volume_imbalance_24",
     "volatility_24",
     "volatility_168",
     "volatility_720",
@@ -315,6 +321,10 @@ def build_feature_frame(klines: Sequence[dict]) -> pd.DataFrame:
     frame = klines_to_frame(klines)
     close = frame["close"]
     volume = frame["volume"]
+    quote_volume = frame["quote_volume"]
+    trade_count = frame["trade_count"].replace(0, np.nan)
+    taker_buy_quote = frame["taker_buy_quote_volume"]
+    taker_sell_quote = (quote_volume - taker_buy_quote).clip(lower=0.0)
 
     frame["return_1"] = close.pct_change(1)
     frame["return_4"] = close.pct_change(4)
@@ -331,6 +341,19 @@ def build_feature_frame(klines: Sequence[dict]) -> pd.DataFrame:
     frame["volume_ratio_24"] = volume / volume.rolling(24, min_periods=3).mean()
     frame["volume_ratio_168"] = volume / volume.rolling(bars_7d, min_periods=max(24, bars_7d // 3)).mean()
     frame["volume_ratio_720"] = volume / volume.rolling(bars_30d, min_periods=max(bars_7d, bars_30d // 3)).mean()
+    frame["quote_volume_ratio_24"] = quote_volume / quote_volume.rolling(24, min_periods=3).mean()
+    frame["trade_count_ratio_24"] = trade_count / trade_count.rolling(24, min_periods=3).mean()
+
+    avg_trade_size = quote_volume / trade_count
+    frame["avg_trade_size_ratio_24"] = avg_trade_size / avg_trade_size.rolling(24, min_periods=3).mean()
+
+    taker_buy_ratio = taker_buy_quote / quote_volume.replace(0, np.nan)
+    taker_volume_imbalance = (taker_buy_quote - taker_sell_quote) / quote_volume.replace(0, np.nan)
+    frame["taker_buy_ratio_24"] = taker_buy_ratio.rolling(24, min_periods=3).mean()
+    frame["taker_buy_ratio_168"] = taker_buy_ratio.rolling(
+        bars_7d, min_periods=max(24, bars_7d // 3)
+    ).mean()
+    frame["taker_volume_imbalance_24"] = taker_volume_imbalance.rolling(24, min_periods=3).mean()
     frame["rsi_14"] = ta.rsi(close, length=14)
 
     macd = ta.macd(close, fast=12, slow=26, signal=9)

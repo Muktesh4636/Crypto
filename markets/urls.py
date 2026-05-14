@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     DashboardSummaryView,
     EligibleSymbolsView,
+    FuturesFlowSnapshotView,
     HealthView,
     MacroFredView,
     PaperPortfolioView,
@@ -17,6 +18,7 @@ from .views import (
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
+    path("futures/flow/", FuturesFlowSnapshotView.as_view(), name="futures-flow-snapshots"),
     path("coins/eligible/", EligibleSymbolsView.as_view(), name="eligible-symbols"),
     path("fx/usd-inr/", UsdInrFxView.as_view(), name="usd-inr-fx"),
     path("macro/fred/", MacroFredView.as_view(), name="macro-fred"),

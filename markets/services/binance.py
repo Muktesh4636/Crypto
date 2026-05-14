@@ -147,51 +147,6 @@ def fetch_top_coins_by_quote_volume(limit: int | None = None, timeout: float = 2
     return rows if limit is None else rows[:limit]
 
 
-def fetch_top_futures_by_quote_volume(limit: int = 200, timeout: float = 20.0) -> list[dict]:
-    """
-    Return the top `limit` Binance perpetual USDT futures contracts by 24h quote volume.
-    """
-    if limit < 1:
-        raise ValueError("limit must be >= 1")
-
-    symbols = _eligible_futures_usdt_symbols(timeout=timeout)
-
-    res = requests.get(f"{BINANCE_FUTURES_API}/fapi/v1/ticker/24hr", timeout=timeout)
-    res.raise_for_status()
-    tickers = res.json()
-
-    rows: list[dict] = []
-    for t in tickers:
-        sym = t.get("symbol")
-        if sym not in symbols:
-            continue
-        try:
-            qv = float(t.get("quoteVolume", 0) or 0)
-        except (TypeError, ValueError):
-            qv = 0.0
-        rows.append(
-            {
-                "symbol": sym,
-                "base_asset": sym.removesuffix("USDT") if sym.endswith("USDT") else sym,
-                "quote_asset": "USDT",
-                "last_price": t.get("lastPrice"),
-                "price_change_percent": t.get("priceChangePercent"),
-                "open_price": t.get("openPrice"),
-                "high_price": t.get("highPrice"),
-                "low_price": t.get("lowPrice"),
-                "volume": t.get("volume"),
-                "quote_volume": qv,
-                "weighted_avg_price": t.get("weightedAvgPrice"),
-                "open_time": t.get("openTime"),
-                "close_time": t.get("closeTime"),
-                "count": t.get("count"),
-            }
-        )
-
-    rows.sort(key=lambda x: x["quote_volume"], reverse=True)
-    return rows[:limit]
-
-
 def top_futures_symbols_by_quote_volume(limit: int = 50, timeout: float = 20.0) -> list[str]:
     return [row["symbol"] for row in fetch_top_futures_by_quote_volume(limit=limit, timeout=timeout)]
 
@@ -289,3 +244,202 @@ def fetch_historical_klines(
             break
     out.sort(key=lambda row: int(row["open_time"]))
     return out
+
+
+def _to_float(value: object) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int(value: object) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_futures_ticker_rows(limit: int | None = None, timeout: float = 20.0) -> list[dict]:
+    """Return Binance perpetual USDT futures rows ranked by 24h quote volume."""
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be >= 1")
+
+    symbols = _eligible_futures_usdt_symbols(timeout=timeout)
+    res = requests.get(f"{BINANCE_FUTURES_API}/fapi/v1/ticker/24hr", timeout=timeout)
+    res.raise_for_status()
+    tickers = res.json()
+
+    rows: list[dict] = []
+    for t in tickers:
+        sym = t.get("symbol")
+        if sym not in symbols:
+            continue
+        qv = _to_float(t.get("quoteVolume")) or 0.0
+        rows.append(
+            {
+                "symbol": sym,
+                "base_asset": sym.removesuffix("USDT") if sym.endswith("USDT") else sym,
+                "quote_asset": "USDT",
+                "last_price": t.get("lastPrice"),
+                "price_change_percent": t.get("priceChangePercent"),
+                "open_price": t.get("openPrice"),
+                "high_price": t.get("highPrice"),
+                "low_price": t.get("lowPrice"),
+                "volume": t.get("volume"),
+                "quote_volume": qv,
+                "weighted_avg_price": t.get("weightedAvgPrice"),
+                "open_time": t.get("openTime"),
+                "close_time": t.get("closeTime"),
+                "count": t.get("count"),
+            }
+        )
+
+    rows.sort(key=lambda x: x["quote_volume"], reverse=True)
+    return rows if limit is None else rows[:limit]
+
+
+def fetch_top_futures_by_quote_volume(limit: int = 200, timeout: float = 20.0) -> list[dict]:
+    """
+    Return the top `limit` Binance perpetual USDT futures contracts by 24h quote volume.
+    """
+    return fetch_futures_ticker_rows(limit=limit, timeout=timeout)
+
+
+def fetch_all_futures_mark_prices(timeout: float = 20.0) -> dict[str, dict]:
+    """Return mark-price / funding metadata for all Binance USDT perpetual futures."""
+    res = requests.get(f"{BINANCE_FUTURES_API}/fapi/v1/premiumIndex", timeout=timeout)
+    res.raise_for_status()
+    payload = res.json()
+    out: dict[str, dict] = {}
+    symbols = _eligible_futures_usdt_symbols(timeout=timeout)
+    for item in payload:
+        sym = item.get("symbol")
+        if sym not in symbols:
+            continue
+        out[sym] = {
+            "symbol": sym,
+            "mark_price": _to_float(item.get("markPrice")),
+            "index_price": _to_float(item.get("indexPrice")),
+            "last_funding_rate": _to_float(item.get("lastFundingRate")),
+            "next_funding_time": _to_int(item.get("nextFundingTime")),
+            "time": _to_int(item.get("time")),
+        }
+    return out
+
+
+def fetch_futures_open_interest(symbol: str, timeout: float = 20.0) -> dict:
+    res = requests.get(
+        f"{BINANCE_FUTURES_API}/fapi/v1/openInterest",
+        params={"symbol": symbol.upper()},
+        timeout=timeout,
+    )
+    res.raise_for_status()
+    item = res.json()
+    return {
+        "symbol": item.get("symbol") or symbol.upper(),
+        "open_interest": _to_float(item.get("openInterest")),
+        "timestamp": _to_int(item.get("time")),
+    }
+
+
+def _fetch_latest_futures_ratio_series(
+    *,
+    endpoint: str,
+    symbol: str,
+    period: str,
+    timeout: float = 20.0,
+) -> dict:
+    res = requests.get(
+        f"{BINANCE_FUTURES_API}{endpoint}",
+        params={"symbol": symbol.upper(), "period": period, "limit": 1},
+        timeout=timeout,
+    )
+    res.raise_for_status()
+    rows = res.json()
+    if not rows:
+        return {}
+    return dict(rows[-1])
+
+
+def fetch_futures_global_long_short_ratio(symbol: str, period: str = "5m", timeout: float = 20.0) -> dict:
+    item = _fetch_latest_futures_ratio_series(
+        endpoint="/futures/data/globalLongShortAccountRatio",
+        symbol=symbol,
+        period=period,
+        timeout=timeout,
+    )
+    return {
+        "symbol": item.get("symbol") or symbol.upper(),
+        "long_short_ratio": _to_float(item.get("longShortRatio")),
+        "long_account_ratio": _to_float(item.get("longAccount")),
+        "short_account_ratio": _to_float(item.get("shortAccount")),
+        "timestamp": _to_int(item.get("timestamp")),
+    }
+
+
+def fetch_futures_top_long_short_account_ratio(symbol: str, period: str = "5m", timeout: float = 20.0) -> dict:
+    item = _fetch_latest_futures_ratio_series(
+        endpoint="/futures/data/topLongShortAccountRatio",
+        symbol=symbol,
+        period=period,
+        timeout=timeout,
+    )
+    return {
+        "symbol": item.get("symbol") or symbol.upper(),
+        "long_short_ratio": _to_float(item.get("longShortRatio")),
+        "long_account_ratio": _to_float(item.get("longAccount")),
+        "short_account_ratio": _to_float(item.get("shortAccount")),
+        "timestamp": _to_int(item.get("timestamp")),
+    }
+
+
+def fetch_futures_top_long_short_position_ratio(symbol: str, period: str = "5m", timeout: float = 20.0) -> dict:
+    item = _fetch_latest_futures_ratio_series(
+        endpoint="/futures/data/topLongShortPositionRatio",
+        symbol=symbol,
+        period=period,
+        timeout=timeout,
+    )
+    return {
+        "symbol": item.get("symbol") or symbol.upper(),
+        "long_short_ratio": _to_float(item.get("longShortRatio")),
+        "long_position_ratio": _to_float(item.get("longAccount")),
+        "short_position_ratio": _to_float(item.get("shortAccount")),
+        "timestamp": _to_int(item.get("timestamp")),
+    }
+
+
+def fetch_futures_taker_buy_sell_ratio(symbol: str, period: str = "5m", timeout: float = 20.0) -> dict:
+    item = _fetch_latest_futures_ratio_series(
+        endpoint="/futures/data/takerlongshortRatio",
+        symbol=symbol,
+        period=period,
+        timeout=timeout,
+    )
+    return {
+        "symbol": item.get("symbol") or symbol.upper(),
+        "buy_sell_ratio": _to_float(item.get("buySellRatio")),
+        "buy_volume": _to_float(item.get("buyVol")),
+        "sell_volume": _to_float(item.get("sellVol")),
+        "timestamp": _to_int(item.get("timestamp")),
+    }
+
+
+def fetch_latest_closed_kline(
+    symbol: str,
+    *,
+    interval: str = "1h",
+    market: str = "futures",
+    timeout: float = 20.0,
+) -> dict:
+    rows = fetch_klines(symbol=symbol, interval=interval, market=market, limit=2, timeout=timeout)
+    if not rows:
+        return {}
+    if len(rows) >= 2:
+        return rows[-2]
+    return rows[-1]
