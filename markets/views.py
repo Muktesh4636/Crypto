@@ -307,6 +307,9 @@ class FuturesFlowSnapshotView(APIView):
                         "recent_bar_taker_buy_quote_volume": row.recent_bar_taker_buy_quote_volume,
                         "recent_bar_taker_sell_quote_volume": row.recent_bar_taker_sell_quote_volume,
                         "recent_bar_taker_buy_ratio": row.recent_bar_taker_buy_ratio,
+                        "order_book_imbalance": row.order_book_imbalance,
+                        "order_book_bid_share": row.order_book_bid_share,
+                        "order_book_spread_pct": row.order_book_spread_pct,
                     }
                     for row in rows
                 ],

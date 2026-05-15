@@ -21,6 +21,9 @@ DEFAULT_FRED_SERIES: tuple[tuple[str, str], ...] = (
     ("DCOILWTICO", "Crude Oil Prices: West Texas Intermediate"),
     ("T10Y2Y", "10-Year Treasury Constant Maturity Minus 2-Year"),
     ("M2SL", "M2 Money Stock"),
+    ("DTWEXBGS", "Trade Weighted U.S. Dollar Index: Broad, Goods and Services"),
+    ("SP500", "S&P 500 Index"),
+    ("DGS10", "10-Year Treasury Constant Maturity Rate"),
 )
 
 

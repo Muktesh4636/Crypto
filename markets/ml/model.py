@@ -95,6 +95,34 @@ class SignalModel:
             "rows": float(len(x_train)),
         }
 
+    def continue_training(
+        self,
+        features: pd.DataFrame,
+        labels: pd.Series | np.ndarray,
+        *,
+        additional_rounds: int = 120,
+        sample_weight: pd.Series | np.ndarray | None = None,
+    ) -> dict[str, float]:
+        x_train = self._coerce_frame(features)
+        y_train = np.asarray(labels, dtype=int)
+        weights = None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        rounds = max(1, int(additional_rounds))
+        booster = self.model.get_booster()
+        if hasattr(booster, "num_boosted_rounds"):
+            existing_rounds = int(booster.num_boosted_rounds())
+        else:
+            existing_rounds = int(self.model.n_estimators)
+        self.model.set_params(n_estimators=existing_rounds + rounds)
+        self.model.fit(x_train, y_train, sample_weight=weights, xgb_model=booster)
+        pred = self._normalize_predicted_classes(self.model.predict(x_train))
+        return {
+            "train_accuracy": float(accuracy_score(y_train, pred)),
+            "train_macro_f1": float(f1_score(y_train, pred, average="macro")),
+            "rows": float(len(x_train)),
+            "additional_rounds": float(rounds),
+            "total_estimators": float(self.model.n_estimators),
+        }
+
     def predict_classes(self, features: pd.DataFrame | Mapping[str, Any]) -> np.ndarray:
         frame = self._coerce_frame(features)
         return self._normalize_predicted_classes(self.model.predict(frame))

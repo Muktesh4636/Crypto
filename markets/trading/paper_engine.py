@@ -12,6 +12,7 @@ from markets.ml.model import SignalModel, available_model_symbols
 from markets.models import PaperTrade
 from markets.services.binance import fetch_historical_klines, top_futures_symbols_by_quote_volume
 from markets.services.features import latest_feature_snapshot
+from markets.services.market_context import build_live_context
 
 DEFAULT_SYMBOL = "BTCUSDT"
 DEFAULT_INTERVAL = "1h"
@@ -102,7 +103,14 @@ def load_market_snapshot(
     klines = _load_price_memory_klines(symbol=symbol, interval=interval, market=market)
     if not klines:
         raise RuntimeError(f"No {market} kline history returned for {symbol}.")
-    snapshot = latest_feature_snapshot(klines)
+    context = build_live_context(symbol=symbol, interval=interval, btc_klines=None)
+    if context.btc_klines is None and symbol.upper() != "BTCUSDT":
+        context.btc_klines = _load_price_memory_klines(
+            symbol="BTCUSDT",
+            interval=interval,
+            market=market,
+        )
+    snapshot = latest_feature_snapshot(klines, context=context)
     snapshot["symbol"] = symbol
     snapshot["interval"] = interval
     snapshot["market"] = market

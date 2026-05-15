@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 import time
 
@@ -17,6 +18,31 @@ _FUTURES_SYMBOLS: frozenset[str] | None = None
 _FUTURES_EXPIRES_MONO: float = 0.0
 # Symbols rarely change; avoid hitting exchangeInfo on every poll.
 _EXCHANGE_CACHE_TTL_SEC = 300.0
+_REQUEST_RETRY_STATUSES = {418, 429}
+
+
+def _get_with_retry(
+    url: str,
+    *,
+    params: dict[str, object] | None = None,
+    timeout: float = 20.0,
+    max_retries: int = 6,
+) -> requests.Response:
+    delay_sec = 1.0
+    last_response: requests.Response | None = None
+    for attempt in range(max_retries):
+        res = requests.get(url, params=params, timeout=timeout)
+        last_response = res
+        if res.status_code not in _REQUEST_RETRY_STATUSES:
+            return res
+        if attempt >= max_retries - 1:
+            break
+        retry_after = res.headers.get("Retry-After")
+        sleep_for = float(retry_after) if retry_after and retry_after.isdigit() else delay_sec
+        time.sleep(sleep_for)
+        delay_sec = min(delay_sec * 2.0, 30.0)
+    assert last_response is not None
+    return last_response
 
 
 def _spot_usdt_trading_symbols(exchange_info: dict) -> set[str]:
@@ -178,7 +204,7 @@ def fetch_klines(
         params["endTime"] = int(end_time_ms)
     base_url = BINANCE_API if market_normalized == "spot" else BINANCE_FUTURES_API
     endpoint = "/api/v3/klines" if market_normalized == "spot" else "/fapi/v1/klines"
-    res = requests.get(f"{base_url}{endpoint}", params=params, timeout=timeout)
+    res = _get_with_retry(f"{base_url}{endpoint}", params=params, timeout=timeout)
     res.raise_for_status()
     rows: list[dict] = []
     for item in res.json():
@@ -242,6 +268,7 @@ def fetch_historical_klines(
         cursor = int(chunk[-1]["close_time"]) + 1
         if end_time_ms is not None and cursor > int(end_time_ms):
             break
+        time.sleep(0.12)
     out.sort(key=lambda row: int(row["open_time"]))
     return out
 
@@ -443,3 +470,203 @@ def fetch_latest_closed_kline(
     if len(rows) >= 2:
         return rows[-2]
     return rows[-1]
+
+
+def _max_pages_for_window(
+    start_time_ms: int,
+    end_time_ms: int | None,
+    *,
+    page_limit: int,
+    interval_ms: int,
+    min_pages: int = 20,
+    max_pages_cap: int = 200,
+) -> int:
+    end_ms = int(end_time_ms if end_time_ms is not None else time.time() * 1000)
+    span_ms = max(end_ms - int(start_time_ms), 0)
+    estimated_points = max(span_ms // max(interval_ms, 1), 1)
+    pages = math.ceil(estimated_points / max(page_limit, 1)) + 2
+    return max(min_pages, min(int(pages), max_pages_cap))
+
+
+def _period_to_ms(period: str) -> int:
+    normalized = period.strip().lower()
+    if normalized.endswith("m"):
+        return int(normalized[:-1]) * 60 * 1000
+    if normalized.endswith("h"):
+        return int(normalized[:-1]) * 3600 * 1000
+    if normalized.endswith("d"):
+        return int(normalized[:-1]) * 24 * 3600 * 1000
+    return 3600 * 1000
+
+
+def _page_futures_data_rows(
+    *,
+    endpoint: str,
+    params: dict[str, object],
+    time_key: str = "timestamp",
+    timeout: float = 20.0,
+    max_pages: int = 20,
+) -> list[dict]:
+    out: list[dict] = []
+    seen: set[int] = set()
+    cursor = params.get("startTime")
+    for _ in range(max_pages):
+        page_params = dict(params)
+        if cursor is not None:
+            page_params["startTime"] = int(cursor)
+        res = _get_with_retry(f"{BINANCE_FUTURES_API}{endpoint}", params=page_params, timeout=timeout)
+        res.raise_for_status()
+        rows = res.json()
+        if not rows:
+            break
+        added = 0
+        for row in rows:
+            ts = _to_int(row.get(time_key))
+            if ts is None or ts in seen:
+                continue
+            seen.add(ts)
+            out.append(dict(row))
+            added += 1
+        if added == 0 or len(rows) < int(page_params.get("limit", 500)):
+            break
+        cursor = int(rows[-1][time_key]) + 1
+        end_time = params.get("endTime")
+        if end_time is not None and cursor > int(end_time):
+            break
+    out.sort(key=lambda row: int(row[time_key]))
+    return out
+
+
+def fetch_futures_funding_rate_history(
+    symbol: str,
+    *,
+    start_time_ms: int,
+    end_time_ms: int | None = None,
+    timeout: float = 20.0,
+) -> list[dict]:
+    params: dict[str, object] = {
+        "symbol": symbol.upper(),
+        "startTime": int(start_time_ms),
+        "limit": 1000,
+    }
+    if end_time_ms is not None:
+        params["endTime"] = int(end_time_ms)
+    max_pages = _max_pages_for_window(
+        start_time_ms,
+        end_time_ms,
+        page_limit=1000,
+        interval_ms=8 * 3600 * 1000,
+    )
+    return _page_futures_data_rows(
+        endpoint="/fapi/v1/fundingRate",
+        params=params,
+        time_key="fundingTime",
+        timeout=timeout,
+        max_pages=max_pages,
+    )
+
+
+def fetch_futures_open_interest_history(
+    symbol: str,
+    *,
+    period: str = "1h",
+    start_time_ms: int,
+    end_time_ms: int | None = None,
+    timeout: float = 20.0,
+) -> list[dict]:
+    params: dict[str, object] = {
+        "symbol": symbol.upper(),
+        "period": period,
+        "startTime": int(start_time_ms),
+        "limit": 500,
+    }
+    if end_time_ms is not None:
+        params["endTime"] = int(end_time_ms)
+    interval_ms = _period_to_ms(period)
+    max_pages = _max_pages_for_window(
+        start_time_ms,
+        end_time_ms,
+        page_limit=500,
+        interval_ms=interval_ms,
+    )
+    return _page_futures_data_rows(
+        endpoint="/futures/data/openInterestHist",
+        params=params,
+        timeout=timeout,
+        max_pages=max_pages,
+    )
+
+
+def fetch_futures_order_book_depth(symbol: str, *, limit: int = 100, timeout: float = 20.0) -> dict:
+    """Return top-of-book depth stats for a Binance USDT perpetual futures symbol."""
+    if limit < 5 or limit > 1000:
+        raise ValueError("limit must be between 5 and 1000")
+    res = requests.get(
+        f"{BINANCE_FUTURES_API}/fapi/v1/depth",
+        params={"symbol": symbol.upper(), "limit": int(limit)},
+        timeout=timeout,
+    )
+    res.raise_for_status()
+    payload = res.json()
+    bids = payload.get("bids") or []
+    asks = payload.get("asks") or []
+    bid_depth = 0.0
+    ask_depth = 0.0
+    for price, qty in bids:
+        p = _to_float(price) or 0.0
+        q = _to_float(qty) or 0.0
+        bid_depth += p * q
+    for price, qty in asks:
+        p = _to_float(price) or 0.0
+        q = _to_float(qty) or 0.0
+        ask_depth += p * q
+    total_depth = bid_depth + ask_depth
+    best_bid = _to_float(bids[0][0]) if bids else None
+    best_ask = _to_float(asks[0][0]) if asks else None
+    spread_pct = None
+    if best_bid and best_ask and best_bid > 0:
+        spread_pct = (best_ask - best_bid) / best_bid
+    imbalance = None
+    bid_share = None
+    if total_depth > 0:
+        imbalance = (bid_depth - ask_depth) / total_depth
+        bid_share = bid_depth / total_depth
+    return {
+        "symbol": symbol.upper(),
+        "bid_depth_usdt": bid_depth,
+        "ask_depth_usdt": ask_depth,
+        "order_book_imbalance": imbalance,
+        "order_book_bid_share": bid_share,
+        "order_book_spread_pct": spread_pct,
+    }
+
+
+def fetch_futures_global_long_short_ratio_history(
+    symbol: str,
+    *,
+    period: str = "1h",
+    start_time_ms: int,
+    end_time_ms: int | None = None,
+    timeout: float = 20.0,
+) -> list[dict]:
+    params: dict[str, object] = {
+        "symbol": symbol.upper(),
+        "period": period,
+        "startTime": int(start_time_ms),
+        "limit": 500,
+    }
+    if end_time_ms is not None:
+        params["endTime"] = int(end_time_ms)
+    interval_ms = _period_to_ms(period)
+    max_pages = _max_pages_for_window(
+        start_time_ms,
+        end_time_ms,
+        page_limit=500,
+        interval_ms=interval_ms,
+    )
+    return _page_futures_data_rows(
+        endpoint="/futures/data/globalLongShortAccountRatio",
+        params=params,
+        timeout=timeout,
+        max_pages=max_pages,
+    )

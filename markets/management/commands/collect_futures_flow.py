@@ -13,6 +13,7 @@ from markets.services.binance import (
     fetch_all_futures_mark_prices,
     fetch_futures_global_long_short_ratio,
     fetch_futures_open_interest,
+    fetch_futures_order_book_depth,
     fetch_futures_taker_buy_sell_ratio,
     fetch_futures_ticker_rows,
     fetch_futures_top_long_short_account_ratio,
@@ -153,6 +154,12 @@ class Command(BaseCommand):
                     )
                     if err:
                         errors.append(err)
+                    order_book, err = safe_fetch(
+                        "order_book",
+                        lambda: fetch_futures_order_book_depth(sym),
+                    )
+                    if err:
+                        errors.append(err)
 
                     mark_price = premium.get("mark_price")
                     open_interest_contracts = open_interest.get("open_interest")
@@ -210,6 +217,11 @@ class Command(BaseCommand):
                             "recent_bar_taker_buy_quote_volume": recent_bar_taker_buy_quote_volume,
                             "recent_bar_taker_sell_quote_volume": recent_bar_taker_sell_quote_volume,
                             "recent_bar_taker_buy_ratio": recent_bar_taker_buy_ratio,
+                            "order_book_bid_depth_usdt": _to_float(order_book.get("bid_depth_usdt")),
+                            "order_book_ask_depth_usdt": _to_float(order_book.get("ask_depth_usdt")),
+                            "order_book_imbalance": _to_float(order_book.get("order_book_imbalance")),
+                            "order_book_bid_share": _to_float(order_book.get("order_book_bid_share")),
+                            "order_book_spread_pct": _to_float(order_book.get("order_book_spread_pct")),
                         },
                     )
                     saved += 1

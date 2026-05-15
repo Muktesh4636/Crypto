@@ -150,6 +150,12 @@ class FuturesFlowSnapshot(models.Model):
     recent_bar_taker_sell_quote_volume = models.FloatField(null=True, blank=True)
     recent_bar_taker_buy_ratio = models.FloatField(null=True, blank=True)
 
+    order_book_bid_depth_usdt = models.FloatField(null=True, blank=True)
+    order_book_ask_depth_usdt = models.FloatField(null=True, blank=True)
+    order_book_imbalance = models.FloatField(null=True, blank=True)
+    order_book_bid_share = models.FloatField(null=True, blank=True)
+    order_book_spread_pct = models.FloatField(null=True, blank=True)
+
     class Meta:
         ordering = ["-bucket_time", "symbol"]
         constraints = [
