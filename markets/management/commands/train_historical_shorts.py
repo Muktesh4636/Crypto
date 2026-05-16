@@ -9,7 +9,7 @@ from markets.management.commands.seed_model import (
     _to_ms,
 )
 from markets.ml.model import SignalModel, model_paths
-from markets.ml.retrain import retrain_signal_model
+from markets.ml.retrain import retrain_from_losses, retrain_signal_model
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
     fetch_historical_klines,
@@ -36,7 +36,13 @@ class Command(BaseCommand):
         parser.add_argument("--min-confidence", type=float, default=0.55)
         parser.add_argument("--pump-min-confidence", type=float, default=0.48)
         parser.add_argument("--warmup-bars", type=int, default=2400)
-        parser.add_argument("--min-trades-for-retrain", type=int, default=15)
+        parser.add_argument("--min-trades-for-retrain", type=int, default=5)
+        parser.add_argument(
+            "--min-losses-for-retrain",
+            type=int,
+            default=3,
+            help="Minimum losing shorts required to run loss-focused learning per coin.",
+        )
         parser.add_argument("--force", action="store_true", help="Overwrite models and clear backtest journal.")
         parser.add_argument("--skip-seed", action="store_true", help="Skip initial ML seed when model missing.")
         parser.add_argument(
@@ -55,7 +61,8 @@ class Command(BaseCommand):
         min_confidence = float(options["min_confidence"])
         pump_min_confidence = float(options["pump_min_confidence"])
         warmup_bars = max(500, int(options["warmup_bars"]))
-        min_trades = max(5, int(options["min_trades_for_retrain"]))
+        min_trades = max(1, int(options["min_trades_for_retrain"]))
+        min_losses = max(1, int(options["min_losses_for_retrain"]))
         force = bool(options["force"])
         skip_seed = bool(options["skip_seed"])
         focus_pumps = bool(options["focus_pumps"])
@@ -151,27 +158,42 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"  Skip {sym}: {exc}"))
                 continue
 
-            if int(stats["trades_closed"]) < min_trades:
-                skipped.append(f"{sym}: only {stats['trades_closed']} trades")
+            loss_count = int(stats["losses"])
+            trade_count = int(stats["trades_closed"])
+            if loss_count < min_losses and trade_count < min_trades:
+                skipped.append(f"{sym}: losses={loss_count} trades={trade_count}")
                 self.stdout.write(
-                    self.style.WARNING(f"  {sym}: {stats['trades_closed']} trades (<{min_trades}), skip retrain.")
+                    self.style.WARNING(
+                        f"  {sym}: need >={min_losses} losses or >={min_trades} trades "
+                        f"(got {loss_count} losses / {trade_count} trades), skip."
+                    )
                 )
                 continue
 
             try:
-                metrics = retrain_signal_model(
-                    symbol=sym,
-                    backtest_only=True,
-                    shorts_only=True,
-                )
-                sym_metrics = metrics.get("train_rows", 0) if isinstance(metrics, dict) else 0
+                if loss_count >= min_losses:
+                    metrics = retrain_from_losses(
+                        sym,
+                        backtest_only=True,
+                        shorts_only=True,
+                        min_losses=min_losses,
+                        loss_duplicates=2,
+                    )
+                    mode = "loss_focused"
+                else:
+                    metrics = retrain_signal_model(
+                        symbol=sym,
+                        backtest_only=True,
+                        shorts_only=True,
+                    )
+                    mode = "journal"
                 trained.append(sym)
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"  {sym}: shorts closed={stats['trades_closed']} "
+                        f"  {sym}: shorts closed={trade_count} "
                         f"(pump_focus={stats.get('pump_focus_trades', 0)}) "
-                        f"wins={stats['wins']} losses={stats['losses']} "
-                        f"retrain_rows={sym_metrics}"
+                        f"wins={stats['wins']} losses={loss_count} "
+                        f"learn_mode={mode} rows={metrics.get('train_rows', 0)}"
                     )
                 )
             except ValueError as exc:

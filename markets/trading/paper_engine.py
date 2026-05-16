@@ -9,6 +9,8 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from markets.ml.model import SignalModel, available_model_symbols
+from markets.ml.retrain import retrain_from_losses
+from markets.trading.historical_backtest import BACKTEST_NOTE_PREFIX
 from markets.models import PaperTrade
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
@@ -343,7 +345,31 @@ def _close_trade(trade: PaperTrade, *, current_price: float, reason: str) -> Pap
             "notes",
         ]
     )
+    _maybe_learn_from_loss(trade)
     return trade
+
+
+def _maybe_learn_from_loss(trade: PaperTrade) -> None:
+    """After a live short loss, update that coin's model from its loss journal."""
+    if trade.outcome != PaperTrade.Outcome.LOSS:
+        return
+    if trade.action != PaperTrade.Action.SELL:
+        return
+    if (trade.notes or "").startswith(BACKTEST_NOTE_PREFIX):
+        return
+    try:
+        retrain_from_losses(
+            trade.symbol,
+            backtest_only=False,
+            shorts_only=True,
+            min_losses=5,
+            loss_duplicates=2,
+            additional_rounds=40,
+        )
+    except ValueError:
+        return
+    except Exception:
+        return
 
 
 def run_once(

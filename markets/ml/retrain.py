@@ -13,6 +13,7 @@ from markets.trading.historical_backtest import BACKTEST_NOTE_PREFIX
 PUMP_SCORE_COLUMN = "pump_manipulation_score_24"
 NEWS_HYPE_COLUMN = "news_hype_score_24"
 PUMP_FOCUS_THRESHOLD = 0.55
+LOSS_WEIGHT_BASE = 12.0
 
 
 def _snapshot_float(snapshot: dict, key: str) -> float:
@@ -29,21 +30,35 @@ def trade_sample_weight(trade: PaperTrade, snapshot: dict[str, Any]) -> float:
     news_sentiment_24 = _snapshot_float(snapshot, "news_sentiment_24h")
 
     if trade.outcome == PaperTrade.Outcome.WIN:
-        weight = 1.5
+        weight = 1.0
         if trade.action == PaperTrade.Action.SELL and pump >= PUMP_FOCUS_THRESHOLD:
-            weight = 2.5
+            weight = 1.5
         return weight
 
     if trade.outcome == PaperTrade.Outcome.LOSS:
-        weight = 5.0
+        weight = LOSS_WEIGHT_BASE
         if trade.action == PaperTrade.Action.SELL:
             if pump >= PUMP_FOCUS_THRESHOLD:
-                weight = 9.0
+                weight = LOSS_WEIGHT_BASE + 6.0
             if news_hype >= 0.45 or news_sentiment_24 > 0.2:
-                weight = max(weight, 7.5)
+                weight = max(weight, LOSS_WEIGHT_BASE + 4.0)
         return weight
 
-    return 1.0
+    return 0.75
+
+
+def _loss_count(
+    symbol: str,
+    *,
+    backtest_only: bool,
+    shorts_only: bool,
+) -> int:
+    qs = PaperTrade.objects.filter(symbol=symbol, outcome=PaperTrade.Outcome.LOSS)
+    if backtest_only:
+        qs = qs.filter(notes__startswith=BACKTEST_NOTE_PREFIX)
+    if shorts_only:
+        qs = qs.filter(action=PaperTrade.Action.SELL)
+    return qs.count()
 
 
 def trade_journal_training_frame(
@@ -51,6 +66,7 @@ def trade_journal_training_frame(
     *,
     backtest_only: bool = False,
     shorts_only: bool = True,
+    duplicate_losses: int = 0,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     rows: list[dict[str, Any]] = []
     targets: list[int] = []
@@ -73,9 +89,15 @@ def trade_journal_training_frame(
             target_name = "HOLD"
         else:
             target_name = "HOLD"
+        weight = trade_sample_weight(trade, snapshot)
         rows.append(row)
         targets.append(TARGET_NAME_TO_CLASS[target_name])
-        weights.append(trade_sample_weight(trade, snapshot))
+        weights.append(weight)
+        if trade.outcome == PaperTrade.Outcome.LOSS and duplicate_losses > 0:
+            for _ in range(duplicate_losses):
+                rows.append(dict(row))
+                targets.append(TARGET_NAME_TO_CLASS[target_name])
+                weights.append(weight * 1.25)
 
     if not rows:
         return pd.DataFrame(columns=FEATURE_COLUMNS), pd.Series(dtype=int), pd.Series(dtype=float)
@@ -86,19 +108,118 @@ def trade_journal_training_frame(
     )
 
 
+def retrain_from_losses(
+    symbol: str,
+    *,
+    backtest_only: bool = False,
+    shorts_only: bool = True,
+    min_losses: int = 3,
+    loss_duplicates: int = 2,
+    additional_rounds: int = 80,
+) -> dict[str, float | int | str]:
+    """
+    Per-coin update focused on losing short trades: duplicate loss rows and warm-start
+    the existing model so it learns not to repeat those setups.
+    """
+    sym = symbol.upper()
+    losses = _loss_count(sym, backtest_only=backtest_only, shorts_only=shorts_only)
+    if losses < min_losses:
+        raise ValueError(
+            f"Need at least {min_losses} closed loss trades for {sym} before loss-focused retrain "
+            f"(have {losses})."
+        )
+
+    features, labels, weights = trade_journal_training_frame(
+        sym,
+        backtest_only=backtest_only,
+        shorts_only=shorts_only,
+        duplicate_losses=loss_duplicates,
+    )
+    if len(features) < max(min_losses, 3):
+        raise ValueError(f"Not enough journal rows to retrain {sym} from losses.")
+
+    split_idx = max(int(len(features) * 0.85), 1)
+    train_x = features.iloc[:split_idx]
+    train_y = labels.iloc[:split_idx]
+    train_w = weights.iloc[:split_idx]
+    test_x = features.iloc[split_idx:]
+    test_y = labels.iloc[split_idx:]
+
+    model = SignalModel.load_if_available(symbol=sym) or SignalModel()
+    if model_paths_has_trained_booster(sym):
+        train_metrics = model.continue_training(
+            train_x,
+            train_y,
+            sample_weight=train_w,
+            additional_rounds=additional_rounds,
+        )
+        training_mode = "loss_focused_continue"
+    else:
+        train_metrics = model.train(train_x, train_y, sample_weight=train_w)
+        training_mode = "loss_focused_fresh"
+
+    result: dict[str, float | int | str] = {
+        "symbol": sym,
+        "train_rows": int(len(train_x)),
+        "test_rows": int(len(test_x)),
+        "loss_trades": int(losses),
+        "train_accuracy": float(train_metrics["train_accuracy"]),
+        "train_macro_f1": float(train_metrics["train_macro_f1"]),
+        "training_mode": training_mode,
+    }
+    if not test_x.empty:
+        test_pred = model.predict_classes(test_x.fillna(0.0))
+        result["test_accuracy"] = float(accuracy_score(test_y, test_pred))
+        result["test_macro_f1"] = float(f1_score(test_y, test_pred, average="macro"))
+    loss_filter: dict[str, Any] = {"symbol": sym, "outcome": PaperTrade.Outcome.LOSS}
+    if backtest_only:
+        loss_filter["notes__startswith"] = BACKTEST_NOTE_PREFIX
+    model.save(
+        {
+            **result,
+            "analysis_mode": "per_symbol",
+            "strategy_mode": "short_only",
+            "retrained_from_trade_rows": int(len(features)),
+            "retrained_from_losses": int(PaperTrade.objects.filter(**loss_filter).count()),
+            "retrained_from_backtest_only": backtest_only,
+            "retrained_shorts_only": shorts_only,
+            "retrained_loss_focused": True,
+        },
+        symbol=sym,
+    )
+    return result
+
+
+def model_paths_has_trained_booster(symbol: str) -> bool:
+    from markets.ml.model import model_paths
+
+    path, _ = model_paths(symbol)
+    return path.exists()
+
+
 def _retrain_one_symbol(
     symbol: str,
     *,
     backtest_only: bool = False,
     shorts_only: bool = True,
 ) -> dict[str, float | int | str]:
+    losses = _loss_count(symbol, backtest_only=backtest_only, shorts_only=shorts_only)
+    if losses >= 3:
+        return retrain_from_losses(
+            symbol,
+            backtest_only=backtest_only,
+            shorts_only=shorts_only,
+            min_losses=3,
+            loss_duplicates=2,
+        )
+
     features, labels, weights = trade_journal_training_frame(
         symbol,
         backtest_only=backtest_only,
         shorts_only=shorts_only,
     )
-    if len(features) < 20:
-        raise ValueError("Need at least 20 closed short paper trades before retraining.")
+    if len(features) < 10:
+        raise ValueError("Need at least 10 closed short paper trades before retraining.")
 
     split_idx = max(int(len(features) * 0.8), 1)
     train_x = features.iloc[:split_idx]
@@ -163,7 +284,7 @@ def retrain_signal_model(
         except ValueError as exc:
             skipped[sym] = str(exc)
     if not results:
-        raise ValueError("Need at least 20 closed short paper trades for at least one symbol before retraining.")
+        raise ValueError("Need at least 10 closed short paper trades for at least one symbol before retraining.")
     return {
         "analysis_mode": "per_symbol",
         "strategy_mode": "short_only",
