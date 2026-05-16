@@ -177,6 +177,11 @@ def top_futures_symbols_by_quote_volume(limit: int = 50, timeout: float = 20.0) 
     return [row["symbol"] for row in fetch_top_futures_by_quote_volume(limit=limit, timeout=timeout)]
 
 
+def all_futures_symbols_by_quote_volume(timeout: float = 20.0) -> list[str]:
+    """All trading Binance USDT perpetual futures, ranked by 24h quote volume."""
+    return [row["symbol"] for row in fetch_futures_ticker_rows(limit=None, timeout=timeout)]
+
+
 def fetch_klines(
     *,
     symbol: str,

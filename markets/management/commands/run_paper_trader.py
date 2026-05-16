@@ -14,7 +14,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--symbol", type=str, default="")
         parser.add_argument("--symbols", type=str, default="")
-        parser.add_argument("--universe", type=int, default=DEFAULT_UNIVERSE)
+        parser.add_argument(
+            "--universe",
+            type=int,
+            default=DEFAULT_UNIVERSE,
+            help="Symbols to scan per bar. 0 = all symbols with a trained model.",
+        )
         parser.add_argument("--interval", type=str, default=DEFAULT_INTERVAL)
         parser.add_argument("--market", type=str, default=DEFAULT_MARKET)
         parser.add_argument("--sleep-seconds", type=int, default=60)
@@ -34,7 +39,7 @@ class Command(BaseCommand):
         kwargs = {
             "symbol": symbol,
             "symbols": symbols,
-            "universe": max(1, min(int(options["universe"]), 100)),
+            "universe": int(options["universe"]),
             "interval": interval,
             "market": market,
             "risk_fraction": float(options["risk_fraction"]),

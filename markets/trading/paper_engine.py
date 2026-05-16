@@ -10,7 +10,11 @@ from django.utils import timezone
 
 from markets.ml.model import SignalModel, available_model_symbols
 from markets.models import PaperTrade
-from markets.services.binance import fetch_historical_klines, top_futures_symbols_by_quote_volume
+from markets.services.binance import (
+    all_futures_symbols_by_quote_volume,
+    fetch_historical_klines,
+    top_futures_symbols_by_quote_volume,
+)
 from markets.services.features import latest_feature_snapshot
 from markets.services.market_context import build_live_context
 
@@ -137,10 +141,16 @@ def tracked_symbols(
     explicit = normalize_symbol_list(symbols)
     if explicit:
         return explicit
-    size = max(1, min(int(universe), 100))
     trained = set(available_model_symbols())
+    raw_universe = int(universe)
+    if raw_universe <= 0:
+        if trained:
+            ranked = [sym for sym in all_futures_symbols_by_quote_volume() if sym in trained]
+            return ranked or sorted(trained)
+        return all_futures_symbols_by_quote_volume()
+    size = max(1, min(raw_universe, 500))
     if trained:
-        ranked = [sym for sym in top_futures_symbols_by_quote_volume(limit=100) if sym in trained]
+        ranked = [sym for sym in all_futures_symbols_by_quote_volume() if sym in trained]
         if ranked:
             return ranked[:size]
         return sorted(trained)[:size]

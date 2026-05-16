@@ -10,7 +10,11 @@ from django.utils.dateparse import parse_date
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
 from markets.ml.model import SignalModel, model_paths
-from markets.services.binance import fetch_historical_klines, top_futures_symbols_by_quote_volume
+from markets.services.binance import (
+    all_futures_symbols_by_quote_volume,
+    fetch_historical_klines,
+    top_futures_symbols_by_quote_volume,
+)
 from markets.services.features import (
     FEATURE_COLUMNS,
     NEWS_MEMORY_DAYS,
@@ -110,13 +114,23 @@ class Command(BaseCommand):
         parser.add_argument("--phase2-to", type=str, default="")
         parser.add_argument("--phase2-rounds", type=int, default=120)
         parser.add_argument("--force", action="store_true")
+        parser.add_argument(
+            "--all-futures",
+            action="store_true",
+            help="Train every eligible Binance USDT perpetual futures symbol (ignores --universe cap).",
+        )
 
     def handle(self, *args, **options):
         symbol = options["symbol"].strip().upper()
         raw_symbols = options["symbols"].strip()
         interval = options["interval"].strip()
         days = max(90, int(options["days"]))
-        universe = max(1, min(int(options["universe"]), 100))
+        all_futures = bool(options["all_futures"])
+        raw_universe = int(options["universe"])
+        if all_futures:
+            universe = 0
+        else:
+            universe = max(1, min(raw_universe, 500))
         horizon_bars = max(1, int(options["horizon_bars"]))
         sell_threshold = float(options["sell_threshold"])
         two_stage = bool(options["two_stage"])
@@ -130,7 +144,12 @@ class Command(BaseCommand):
         else:
             symbols = []
         if not symbols:
-            symbols = top_futures_symbols_by_quote_volume(limit=universe)
+            if all_futures:
+                symbols = all_futures_symbols_by_quote_volume()
+                universe = len(symbols)
+                self.stdout.write(f"Training all {len(symbols)} Binance USDT futures symbols.")
+            else:
+                symbols = top_futures_symbols_by_quote_volume(limit=universe)
 
         if two_stage:
             self._train_two_stage(
@@ -181,9 +200,11 @@ class Command(BaseCommand):
 
         trained_symbols: list[str] = []
         summary_rows: list[str] = []
-        for sym in symbols:
+        total = len(symbols)
+        for index, sym in enumerate(symbols, start=1):
             self.stdout.write(
-                f"Fetching {sym} {interval} futures klines from {date_start.isoformat()} to {date_end.isoformat()}..."
+                f"[{index}/{total}] Fetching {sym} {interval} futures klines "
+                f"from {date_start.isoformat()} to {date_end.isoformat()}..."
             )
             dataset = _build_symbol_dataset(
                 sym,
@@ -305,15 +326,18 @@ class Command(BaseCommand):
 
         trained_symbols: list[str] = []
         summary_rows: list[str] = []
-        for sym in symbols:
+        total = len(symbols)
+        for index, sym in enumerate(symbols, start=1):
             model_path, _ = model_paths(sym)
             if model_path.exists() and not force:
                 self.stdout.write(
-                    self.style.WARNING(f"Skipping {sym}: model exists (use --force to overwrite).")
+                    self.style.WARNING(
+                        f"[{index}/{total}] Skipping {sym}: model exists (use --force to overwrite)."
+                    )
                 )
                 continue
 
-            self.stdout.write(f"Phase 1 dataset for {sym}...")
+            self.stdout.write(f"[{index}/{total}] Phase 1 dataset for {sym}...")
             phase1_dataset = _build_symbol_dataset(
                 sym,
                 interval=interval,
