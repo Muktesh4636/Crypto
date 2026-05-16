@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score
 from markets.ml.model import SignalModel, available_model_symbols
 from markets.models import PaperTrade
 from markets.services.features import FEATURE_COLUMNS, TARGET_NAME_TO_CLASS
-from markets.trading.historical_backtest import BACKTEST_NOTE_PREFIX
+from markets.trading.constants import BACKTEST_NOTE_PREFIX
 
 PUMP_SCORE_COLUMN = "pump_manipulation_score_24"
 NEWS_HYPE_COLUMN = "news_hype_score_24"

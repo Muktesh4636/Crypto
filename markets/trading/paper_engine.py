@@ -9,9 +9,15 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from markets.ml.model import SignalModel, available_model_symbols
-from markets.ml.retrain import retrain_from_losses
-from markets.trading.historical_backtest import BACKTEST_NOTE_PREFIX
 from markets.models import PaperTrade
+from markets.trading.constants import (
+    BACKTEST_NOTE_PREFIX,
+    DEFAULT_INTERVAL,
+    DEFAULT_MARKET,
+    DEFAULT_SYMBOL,
+    DEFAULT_UNIVERSE,
+)
+from markets.trading.pnl import STARTING_CAPITAL_INR, starting_capital_usdt, trade_pnl_pct, trade_pnl_usdt
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
     fetch_historical_klines,
@@ -20,22 +26,11 @@ from markets.services.binance import (
 from markets.services.features import latest_feature_snapshot
 from markets.services.market_context import build_live_context
 
-DEFAULT_SYMBOL = "BTCUSDT"
-DEFAULT_INTERVAL = "1h"
-DEFAULT_MARKET = "futures"
-DEFAULT_UNIVERSE = 15
-STARTING_CAPITAL_INR = 100_000.0
-DEFAULT_USD_INR = 83.0
 PRICE_MEMORY_DAYS = 365 * 3
 SNAPSHOT_REFRESH_SEC = 300
 
 _MARKET_HISTORY_LOCK = threading.Lock()
 _MARKET_HISTORY_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
-
-
-def starting_capital_usdt(usd_inr: float | None = None) -> float:
-    rate = usd_inr if isinstance(usd_inr, (int, float)) and usd_inr and usd_inr > 0 else DEFAULT_USD_INR
-    return STARTING_CAPITAL_INR / float(rate)
 
 
 def _market_cache_key(symbol: str, interval: str, market: str) -> tuple[str, str, str]:
@@ -173,19 +168,6 @@ def open_trades(symbol: str | None = None) -> list[PaperTrade]:
     return list(qs.order_by("-opened_at"))
 
 
-def trade_pnl_usdt(trade: PaperTrade, price_usdt: float) -> float:
-    if trade.action == PaperTrade.Action.BUY:
-        return (price_usdt - trade.entry_price_usdt) * trade.quantity
-    return (trade.entry_price_usdt - price_usdt) * trade.quantity
-
-
-def _trade_pnl_pct(trade: PaperTrade, price_usdt: float) -> float:
-    if trade.entry_price_usdt == 0:
-        return 0.0
-    signed_move = trade_pnl_usdt(trade, price_usdt) / (trade.quantity * trade.entry_price_usdt)
-    return signed_move * 100.0
-
-
 def portfolio_snapshot(
     *,
     symbol: str | None = None,
@@ -218,6 +200,8 @@ def portfolio_snapshot(
     losses = closed_qs.filter(outcome=PaperTrade.Outcome.LOSS).count()
     flat = closed_qs.filter(outcome=PaperTrade.Outcome.FLAT).count()
     win_rate = (wins / closed_count) if closed_count else 0.0
+    from markets.trading.pnl import DEFAULT_USD_INR
+
     rate = usd_inr if isinstance(usd_inr, (int, float)) and usd_inr and usd_inr > 0 else DEFAULT_USD_INR
     current_price_value = None
     if symbol:
@@ -326,7 +310,7 @@ def rank_short_candidates(
 def _close_trade(trade: PaperTrade, *, current_price: float, reason: str) -> PaperTrade:
     trade.exit_price_usdt = current_price
     trade.pnl_usdt = trade_pnl_usdt(trade, current_price)
-    trade.pnl_pct = _trade_pnl_pct(trade, current_price)
+    trade.pnl_pct = trade_pnl_pct(trade, current_price)
     if trade.pnl_usdt > 0:
         trade.outcome = PaperTrade.Outcome.WIN
     elif trade.pnl_usdt < 0:
@@ -351,6 +335,8 @@ def _close_trade(trade: PaperTrade, *, current_price: float, reason: str) -> Pap
 
 def _maybe_learn_from_loss(trade: PaperTrade) -> None:
     """After a live short loss, update that coin's model from its loss journal."""
+    from markets.ml.retrain import retrain_from_losses
+
     if trade.outcome != PaperTrade.Outcome.LOSS:
         return
     if trade.action != PaperTrade.Action.SELL:

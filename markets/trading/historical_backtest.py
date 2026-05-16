@@ -10,15 +10,9 @@ from markets.models import PaperTrade
 from markets.services.binance import fetch_historical_klines
 from markets.services.features import FEATURE_COLUMNS, build_feature_frame
 from markets.services.market_context import build_training_context
-from markets.trading.paper_engine import (
-    DEFAULT_INTERVAL,
-    DEFAULT_MARKET,
-    _trade_pnl_pct,
-    starting_capital_usdt,
-    trade_pnl_usdt,
-)
+from markets.trading.constants import BACKTEST_NOTE_PREFIX, DEFAULT_INTERVAL, DEFAULT_MARKET
+from markets.trading.pnl import starting_capital_usdt, trade_pnl_pct, trade_pnl_usdt
 
-BACKTEST_NOTE_PREFIX = "backtest:"
 DEFAULT_WARMUP_BARS = 2400
 PUMP_FOCUS_THRESHOLD = 0.55
 DEFAULT_PUMP_MIN_CONFIDENCE = 0.48
@@ -133,7 +127,7 @@ def run_symbol_backtest(
         equity_usdt += pnl
         trade.exit_price_usdt = price
         trade.pnl_usdt = pnl
-        trade.pnl_pct = _trade_pnl_pct(trade, price)
+        trade.pnl_pct = trade_pnl_pct(trade, price)
         if pnl > 0:
             trade.outcome = PaperTrade.Outcome.WIN
             wins += 1
