@@ -18,7 +18,7 @@ class Command(BaseCommand):
             "--universe",
             type=int,
             default=DEFAULT_UNIVERSE,
-            help="Symbols to scan per bar. 0 = all symbols with a trained model.",
+            help="Symbols per cycle. 0 = all Binance USDT futures (~531), rotated in batches.",
         )
         parser.add_argument("--interval", type=str, default=DEFAULT_INTERVAL)
         parser.add_argument("--market", type=str, default=DEFAULT_MARKET)

@@ -709,92 +709,81 @@
       <button type="button" class="primary" id="dashboardRefresh">Refresh dashboard</button>
     </div>
     <section id="dashboardSummary">
-      <div class="dashboard-summary-grid">
+      <p class="section-sub" style="margin:0 0 1rem;">Live paper trades only — old simulated backtest rows are excluded.</p>
+      <div class="dashboard-summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
         <div class="summary-metric">
-          <span class="label">Coins Available</span>
-          <span class="value" id="dashboardCoinCount">—</span>
-          <span class="subtle">Binance USDT pairs</span>
+          <span class="label">Total realized P&amp;L</span>
+          <span class="value mono" id="dashboardTotalPnl">—</span>
+          <span class="subtle" id="dashboardTotalPnlInr">—</span>
         </div>
         <div class="summary-metric">
-          <span class="label">Active Trades</span>
+          <span class="label">Win rate</span>
+          <span class="value" id="dashboardWinRate">—</span>
+          <span class="subtle" id="dashboardWinLossLine">—</span>
+        </div>
+        <div class="summary-metric">
+          <span class="label">Closed trades</span>
+          <span class="value" id="dashboardClosedTrades">—</span>
+          <span class="subtle">Live journal only</span>
+        </div>
+        <div class="summary-metric">
+          <span class="label">Open now</span>
           <span class="value" id="dashboardActiveTrades">—</span>
-          <span class="subtle" id="dashboardActiveSymbols">No active positions</span>
+          <span class="subtle" id="dashboardActiveSymbols">—</span>
         </div>
         <div class="summary-metric">
-          <span class="label">Total Wins</span>
-          <span class="value" id="dashboardWins">—</span>
-          <span class="subtle">Closed winning trades</span>
-        </div>
-        <div class="summary-metric">
-          <span class="label">Total Losses</span>
-          <span class="value" id="dashboardLosses">—</span>
-          <span class="subtle">Closed losing trades</span>
+          <span class="label">pwm models</span>
+          <span class="value" id="dashboardPwmModels">—</span>
+          <span class="subtle" id="dashboardCoinCount">—</span>
         </div>
       </div>
 
-      <div class="dashboard-period-grid">
+      <div class="card" style="margin:1.25rem 0;">
+        <div class="card-head"><div>
+            <h2 class="section-title">Top 5 profitable coins</h2>
+            <p class="section-sub">Best live pwm short performance by total realized P&amp;L.</p>
+          </div></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Coin</th>
+                <th class="num">Trades</th>
+                <th class="num">Win rate</th>
+                <th class="num">Total P&amp;L</th>
+                <th class="num">Avg / trade</th>
+              </tr>
+            </thead>
+            <tbody id="topCoinsBody"><tr><td colspan="6" class="subtle">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dashboard-period-grid" style="grid-template-columns:1fr 1fr;">
         <div class="card dashboard-period-card">
           <div class="card-head">
             <div>
               <h2 class="section-title">Today</h2>
-              <p class="section-sub">Current day trade performance.</p>
+              <p class="section-sub">Live trades closed today.</p>
             </div>
             <span class="pill" id="dailyLabel">—</span>
           </div>
           <div class="period-list">
-            <div class="period-row"><span>Total trades</span><strong id="dailyTrades">—</strong></div>
-            <div class="period-row"><span>Win trades</span><strong id="dailyWins">—</strong></div>
-            <div class="period-row"><span>Loss trades</span><strong id="dailyLosses">—</strong></div>
+            <div class="period-row"><span>Trades</span><strong id="dailyTrades">—</strong></div>
             <div class="period-row"><span>Win rate</span><strong id="dailyWinRate">—</strong></div>
             <div class="period-row"><span>P&amp;L</span><strong id="dailyPnl">—</strong></div>
           </div>
         </div>
         <div class="card dashboard-period-card">
-          <div class="card-head">
-            <div>
-              <h2 class="section-title">This Week</h2>
-              <p class="section-sub">Current week trade performance.</p>
-            </div>
-            <span class="pill" id="weeklyLabel">—</span>
-          </div>
+          <div class="card-head"><div>
+              <h2 class="section-title">This month</h2>
+              <p class="section-sub">Live trades closed this month.</p>
+            </div><span class="pill" id="monthlyLabel">—</span></div>
           <div class="period-list">
-            <div class="period-row"><span>Total trades</span><strong id="weeklyTrades">—</strong></div>
-            <div class="period-row"><span>Win trades</span><strong id="weeklyWins">—</strong></div>
-            <div class="period-row"><span>Loss trades</span><strong id="weeklyLosses">—</strong></div>
-            <div class="period-row"><span>Win rate</span><strong id="weeklyWinRate">—</strong></div>
-            <div class="period-row"><span>P&amp;L</span><strong id="weeklyPnl">—</strong></div>
-          </div>
-        </div>
-        <div class="card dashboard-period-card">
-          <div class="card-head">
-            <div>
-              <h2 class="section-title">This Month</h2>
-              <p class="section-sub">Current month trade performance.</p>
-            </div>
-            <span class="pill" id="monthlyLabel">—</span>
-          </div>
-          <div class="period-list">
-            <div class="period-row"><span>Total trades</span><strong id="monthlyTrades">—</strong></div>
-            <div class="period-row"><span>Win trades</span><strong id="monthlyWins">—</strong></div>
-            <div class="period-row"><span>Loss trades</span><strong id="monthlyLosses">—</strong></div>
+            <div class="period-row"><span>Trades</span><strong id="monthlyTrades">—</strong></div>
             <div class="period-row"><span>Win rate</span><strong id="monthlyWinRate">—</strong></div>
             <div class="period-row"><span>P&amp;L</span><strong id="monthlyPnl">—</strong></div>
-          </div>
-        </div>
-        <div class="card dashboard-period-card">
-          <div class="card-head">
-            <div>
-              <h2 class="section-title">This Year</h2>
-              <p class="section-sub">Current year trade performance.</p>
-            </div>
-            <span class="pill" id="yearlyLabel">—</span>
-          </div>
-          <div class="period-list">
-            <div class="period-row"><span>Total trades</span><strong id="yearlyTrades">—</strong></div>
-            <div class="period-row"><span>Win trades</span><strong id="yearlyWins">—</strong></div>
-            <div class="period-row"><span>Loss trades</span><strong id="yearlyLosses">—</strong></div>
-            <div class="period-row"><span>Win rate</span><strong id="yearlyWinRate">—</strong></div>
-            <div class="period-row"><span>P&amp;L</span><strong id="yearlyPnl">—</strong></div>
           </div>
         </div>
       </div>
@@ -945,23 +934,53 @@
       setText(prefix + "Pnl", fmtSignedCurrency(row && row.pnl_usdt, "USD"), pnlClass ? "mono " + pnlClass : "mono");
     }
 
+    function renderTopCoins(rows) {
+      const body = document.getElementById("topCoinsBody");
+      if (!body) return;
+      body.innerHTML = "";
+      if (!rows || !rows.length) {
+        body.innerHTML = "<tr><td colspan='6' class='subtle'>No live trades yet — top coins appear after closed shorts.</td></tr>";
+        return;
+      }
+      rows.forEach(function (row, i) {
+        const pnl = Number(row.realized_pnl_usdt) || 0;
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (i + 1) + "</td>" +
+          "<td><strong>" + escapeHtml(row.symbol) + "</strong></td>" +
+          "<td class='num'>" + escapeHtml(fmtNum(row.closed_trades, 0)) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtPct((Number(row.win_rate) || 0) * 100)) + "</td>" +
+          "<td class='num " + (pnl >= 0 ? "up" : "down") + "'>" + escapeHtml(fmtSignedCurrency(row.realized_pnl_usdt, "USD")) + "</td>" +
+          "<td class='num'>" + escapeHtml(fmtSignedCurrency(row.avg_pnl_usdt, "USD")) + "</td>";
+        body.appendChild(tr);
+      });
+    }
+
     async function refreshDashboardSummary() {
       if (!dashboardSummaryEl) return;
-      const payload = await fetchJson("/api/dashboard/summary/");
+      const payload = await fetchJson("/api/dashboard/summary/?scope=live");
       const overview = payload.overview || {};
       const activeSymbols = Array.isArray(payload.active_symbols) ? payload.active_symbols : [];
-      setText("dashboardCoinCount", fmtNum(payload.coin_count, 0));
+      const pnl = Number(overview.realized_pnl_usdt) || 0;
+      const pnlClass = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
+      setText("dashboardTotalPnl", fmtSignedCurrency(overview.realized_pnl_usdt, "USD"), "value mono " + pnlClass);
+      setText("dashboardTotalPnlInr", fmtSignedCurrency(overview.realized_pnl_inr, "INR"));
+      setText("dashboardWinRate", fmtPct((Number(overview.win_rate) || 0) * 100));
+      setText(
+        "dashboardWinLossLine",
+        fmtNum(overview.wins, 0) + " wins · " + fmtNum(overview.losses, 0) + " losses"
+      );
+      setText("dashboardClosedTrades", fmtNum(overview.closed_trades, 0));
       setText("dashboardActiveTrades", fmtNum(payload.active_trades, 0));
       setText(
         "dashboardActiveSymbols",
-        activeSymbols.length ? activeSymbols.slice(0, 4).join(", ") : "No active positions"
+        activeSymbols.length ? activeSymbols.join(", ") : "No open positions"
       );
-      setText("dashboardWins", fmtNum(overview.wins, 0));
-      setText("dashboardLosses", fmtNum(overview.losses, 0));
+      setText("dashboardPwmModels", fmtNum(payload.pwm_models_ready, 0));
+      setText("dashboardCoinCount", fmtNum(payload.coin_count, 0) + " Binance pairs");
+      renderTopCoins(payload.top_profitable_coins || []);
       renderDashboardPeriod("daily", payload.current && payload.current.daily);
-      renderDashboardPeriod("weekly", payload.current && payload.current.weekly);
       renderDashboardPeriod("monthly", payload.current && payload.current.monthly);
-      renderDashboardPeriod("yearly", payload.current && payload.current.yearly);
     }
 
     /** When symbol in static icon sets differs from Binance base (ticker → file slug). */
@@ -1142,7 +1161,7 @@
     async function refreshPaperPortfolio() {
       if (!hasPaperWidgets) return;
       try {
-        const payload = await fetchJson("/api/trading/paper-portfolio/?limit=all");
+        const payload = await fetchJson("/api/trading/paper-portfolio/?scope=live&limit=50");
         const portfolio = payload.portfolio || {};
         const trades = payload.trades || [];
         const modelMeta = payload.model || {};
@@ -1169,7 +1188,7 @@
           paperOpenStateEl.textContent = "0";
         }
         paperModelVersionEl.textContent =
-          "Short-only model: " + (modelMeta.model_version || trades[0]?.model_version || "Not trained yet");
+          (modelMeta.model_name || "pwm model") + ": " + (modelMeta.model_version || trades[0]?.model_version || "Not trained yet");
         paperSignalTimeEl.textContent =
           "Signal " +
           (payload.market && payload.market.signal_as_of

@@ -2,23 +2,50 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 import requests
+from django.db.models import Count, Q, Sum
 from django.views.generic import TemplateView
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .ml.model import available_model_symbols, load_all_model_metadata, load_model_metadata
+from .ml.model import PWM_MODEL_FAMILY, available_model_symbols, load_model_metadata
 from .models import FuturesFlowSnapshot, NewsArticle, PaperTrade
 from .serializers import BinanceTickerSerializer
 from .services.analysis import movers_by_daily_change_pct
 from .services.binance import (
     eligible_usdt_spot_symbols,
+    fetch_all_futures_mark_prices,
     fetch_top_coins_by_quote_volume,
     top_futures_symbols_by_quote_volume,
 )
 from .services.fx import enrich_rows_inr, get_usd_inr_rate
 from .services.news_rss import get_cached_world_news_sample
-from .trading.paper_engine import latest_open_trade, load_market_snapshot, portfolio_snapshot, trade_pnl_usdt
+from .trading.constants import BACKTEST_NOTE_PREFIX
+from .trading.paper_engine import latest_open_trade, portfolio_snapshot, trade_pnl_usdt
+
+
+def _paper_trade_scope_filter(qs, scope: str):
+    scope = (scope or "live").strip().lower()
+    if scope == "backtest":
+        return qs.filter(notes__startswith=BACKTEST_NOTE_PREFIX)
+    if scope == "all":
+        return qs
+    return qs.exclude(notes__startswith=BACKTEST_NOTE_PREFIX)
+
+
+def _futures_mark_prices(symbols: set[str]) -> dict[str, float]:
+    if not symbols:
+        return {}
+    try:
+        all_prices = fetch_all_futures_mark_prices(timeout=15.0)
+    except requests.RequestException:
+        return {}
+    out: dict[str, float] = {}
+    for sym in symbols:
+        row = all_prices.get(sym)
+        if row and row.get("mark_price") is not None:
+            out[sym] = float(row["mark_price"])
+    return out
 
 
 def _news_item_json(item: dict) -> dict:
@@ -473,7 +500,7 @@ def _performance_period_label(start: date, period: str) -> str:
 
 
 def _build_performance_rows(
-    trades: list[PaperTrade],
+    trade_values: list[tuple],
     *,
     period: str,
     usd_inr: float | None,
@@ -490,19 +517,19 @@ def _build_performance_rows(
             "worst_trade_usdt": float("inf"),
         }
     )
-    for trade in trades:
-        if trade.closed_at is None:
+    for closed_at, pnl_usdt, outcome in trade_values:
+        if closed_at is None:
             continue
-        key = _performance_period_start(trade.closed_at, period)
+        key = _performance_period_start(closed_at, period)
         bucket = buckets[key]
-        pnl = float(trade.pnl_usdt or 0.0)
+        pnl = float(pnl_usdt or 0.0)
         bucket["trades"] += 1
         bucket["pnl_usdt"] += pnl
         bucket["best_trade_usdt"] = max(float(bucket["best_trade_usdt"]), pnl)
         bucket["worst_trade_usdt"] = min(float(bucket["worst_trade_usdt"]), pnl)
-        if trade.outcome == PaperTrade.Outcome.WIN:
+        if outcome == PaperTrade.Outcome.WIN:
             bucket["wins"] += 1
-        elif trade.outcome == PaperTrade.Outcome.LOSS:
+        elif outcome == PaperTrade.Outcome.LOSS:
             bucket["losses"] += 1
         else:
             bucket["flat"] += 1
@@ -574,14 +601,61 @@ def _current_period_snapshot(
     }
 
 
-def _overall_performance_summary(closed_trades: list[PaperTrade], *, usd_inr: float | None) -> dict[str, float | int | str]:
+def _top_profitable_coins(
+    *,
+    scope: str = "live",
+    limit: int = 5,
+    min_closed_trades: int = 1,
+    usd_inr: float | None = None,
+) -> list[dict[str, float | int | str]]:
     rate = usd_inr if isinstance(usd_inr, (int, float)) and usd_inr and usd_inr > 0 else 83.0
-    pnl_values = [float(trade.pnl_usdt or 0.0) for trade in closed_trades]
-    wins = sum(1 for trade in closed_trades if trade.outcome == PaperTrade.Outcome.WIN)
-    losses = sum(1 for trade in closed_trades if trade.outcome == PaperTrade.Outcome.LOSS)
-    flat = sum(1 for trade in closed_trades if trade.outcome == PaperTrade.Outcome.FLAT)
+    qs = _paper_trade_scope_filter(
+        PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN),
+        scope,
+    )
+    rows = (
+        qs.values("symbol")
+        .annotate(
+            closed_trades=Count("id"),
+            wins=Count("id", filter=Q(outcome=PaperTrade.Outcome.WIN)),
+            losses=Count("id", filter=Q(outcome=PaperTrade.Outcome.LOSS)),
+            realized_pnl_usdt=Sum("pnl_usdt"),
+        )
+        .filter(closed_trades__gte=min_closed_trades)
+        .order_by("-realized_pnl_usdt", "-wins")[:limit]
+    )
+    out: list[dict[str, float | int | str]] = []
+    for row in rows:
+        closed = int(row["closed_trades"] or 0)
+        wins = int(row["wins"] or 0)
+        pnl = float(row["realized_pnl_usdt"] or 0.0)
+        out.append(
+            {
+                "symbol": row["symbol"],
+                "closed_trades": closed,
+                "wins": wins,
+                "losses": int(row["losses"] or 0),
+                "win_rate": (wins / closed) if closed else 0.0,
+                "realized_pnl_usdt": pnl,
+                "realized_pnl_inr": pnl * rate,
+                "avg_pnl_usdt": (pnl / closed) if closed else 0.0,
+            }
+        )
+    return out
+
+
+def _overall_performance_summary(
+    trade_values: list[tuple],
+    *,
+    usd_inr: float | None,
+) -> dict[str, float | int | str]:
+    rate = usd_inr if isinstance(usd_inr, (int, float)) and usd_inr and usd_inr > 0 else 83.0
+    pnl_values = [float(pnl or 0.0) for _, pnl, _ in trade_values]
+    wins = sum(1 for _, _, outcome in trade_values if outcome == PaperTrade.Outcome.WIN)
+    losses = sum(1 for _, _, outcome in trade_values if outcome == PaperTrade.Outcome.LOSS)
+    flat = sum(1 for _, _, outcome in trade_values if outcome == PaperTrade.Outcome.FLAT)
     realized_pnl_usdt = sum(pnl_values)
-    trades_count = len(closed_trades)
+    trades_count = len(trade_values)
     return {
         "closed_trades": trades_count,
         "wins": wins,
@@ -601,19 +675,26 @@ class DashboardSummaryView(APIView):
     """Compact dashboard metrics without market-board or trade-table payloads."""
 
     def get(self, request):
+        scope = request.query_params.get("scope", "live")
         try:
             usd_inr = get_usd_inr_rate()
         except (requests.RequestException, KeyError, TypeError, ValueError):
             usd_inr = None
 
-        closed_qs = PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN).order_by("-closed_at", "-opened_at")
-        open_qs = PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN).order_by("-opened_at")
-        closed_trades = list(closed_qs)
+        closed_qs = _paper_trade_scope_filter(
+            PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN),
+            scope,
+        )
+        open_qs = _paper_trade_scope_filter(
+            PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN),
+            scope,
+        )
+        closed_values = list(closed_qs.values_list("closed_at", "pnl_usdt", "outcome"))
 
-        daily_rows = _build_performance_rows(closed_trades, period="daily", usd_inr=usd_inr)
-        weekly_rows = _build_performance_rows(closed_trades, period="weekly", usd_inr=usd_inr)
-        monthly_rows = _build_performance_rows(closed_trades, period="monthly", usd_inr=usd_inr)
-        yearly_rows = _build_performance_rows(closed_trades, period="yearly", usd_inr=usd_inr)
+        daily_rows = _build_performance_rows(closed_values, period="daily", usd_inr=usd_inr)
+        weekly_rows = _build_performance_rows(closed_values, period="weekly", usd_inr=usd_inr)
+        monthly_rows = _build_performance_rows(closed_values, period="monthly", usd_inr=usd_inr)
+        yearly_rows = _build_performance_rows(closed_values, period="yearly", usd_inr=usd_inr)
 
         try:
             coin_count = len(eligible_usdt_spot_symbols())
@@ -621,17 +702,26 @@ class DashboardSummaryView(APIView):
             coin_count = 0
 
         active_symbols = list(open_qs.values_list("symbol", flat=True).distinct())
-        overview = _overall_performance_summary(closed_trades, usd_inr=usd_inr)
+        overview = _overall_performance_summary(closed_values, usd_inr=usd_inr)
+        pwm_models = len(available_model_symbols(family=PWM_MODEL_FAMILY))
 
         return Response(
             {
+                "scope": scope,
                 "coin_count": coin_count,
+                "pwm_models_ready": pwm_models,
                 "active_trades": open_qs.count(),
                 "active_symbols": active_symbols,
+                "top_profitable_coins": _top_profitable_coins(
+                    scope=scope,
+                    limit=5,
+                    min_closed_trades=1,
+                    usd_inr=usd_inr,
+                ),
                 "overview": {
                     **overview,
                     "open_trades": open_qs.count(),
-                    "total_trades": len(closed_trades) + open_qs.count(),
+                    "total_trades": len(closed_values) + open_qs.count(),
                 },
                 "current": {
                     "daily": _current_period_snapshot(daily_rows, period="daily", usd_inr=usd_inr),
@@ -649,26 +739,25 @@ class PaperPortfolioView(APIView):
     def get(self, request):
         symbol_raw = request.query_params.get("symbol", "").strip().upper()
         symbol = symbol_raw or None
-        limit_raw = request.query_params.get("limit", "all").strip().lower()
+        scope = request.query_params.get("scope", "live")
+        limit_raw = request.query_params.get("limit", "100").strip().lower()
         status_raw = request.query_params.get("status", "all").strip().lower()
+        try:
+            offset = max(0, int(request.query_params.get("offset", 0)))
+        except (TypeError, ValueError):
+            offset = 0
+
         tracked_symbols = available_model_symbols() or top_futures_symbols_by_quote_volume(limit=20)
         open_trade = latest_open_trade(symbol=symbol)
         focus_symbol = symbol or (open_trade.symbol if open_trade else (tracked_symbols[0] if tracked_symbols else "BTCUSDT"))
         focus_model_meta = load_model_metadata(focus_symbol)
-        all_model_meta = load_all_model_metadata()
-        current_prices: dict[str, float] = {}
-        try:
-            market_snapshot = load_market_snapshot(symbol=focus_symbol)
-            current_price = float(market_snapshot["close"])
-            current_prices[focus_symbol] = current_price
-        except (requests.RequestException, ValueError, KeyError) as exc:
-            return Response({"detail": "Failed to load live market snapshot", "error": str(exc)}, status=502)
+
         try:
             usd_inr = get_usd_inr_rate()
         except (requests.RequestException, KeyError, TypeError, ValueError):
             usd_inr = None
 
-        trade_qs = PaperTrade.objects.order_by("-opened_at")
+        trade_qs = _paper_trade_scope_filter(PaperTrade.objects.order_by("-opened_at"), scope)
         if symbol:
             trade_qs = trade_qs.filter(symbol=symbol)
         if status_raw == "open":
@@ -676,41 +765,49 @@ class PaperPortfolioView(APIView):
         elif status_raw == "closed":
             trade_qs = trade_qs.exclude(outcome=PaperTrade.Outcome.OPEN)
         total_trades = trade_qs.count()
-        if limit_raw != "all":
+
+        if limit_raw == "all":
+            limit = min(total_trades, 5000) if total_trades else 500
+        else:
             try:
-                limit = max(1, min(int(limit_raw), 500))
+                limit = max(1, min(int(limit_raw), 5000))
             except (TypeError, ValueError):
-                limit = 100
-            trade_qs = trade_qs[:limit]
-        trade_rows = list(trade_qs)
-        for row in trade_rows:
-            if row.outcome != PaperTrade.Outcome.OPEN or row.symbol in current_prices:
-                continue
-            try:
-                current_prices[row.symbol] = float(load_market_snapshot(symbol=row.symbol)["close"])
-            except (requests.RequestException, ValueError, KeyError):
-                continue
+                limit = 500
+        trade_rows = list(trade_qs[offset : offset + limit])
+
+        price_symbols = {row.symbol for row in trade_rows if row.outcome == PaperTrade.Outcome.OPEN}
+        price_symbols.add(focus_symbol)
+        current_prices = _futures_mark_prices(price_symbols)
+        current_price = current_prices.get(focus_symbol)
+
+        exclude_backtest = scope == "live"
         summary = portfolio_snapshot(
             symbol=symbol,
             current_prices=current_prices,
             usd_inr=usd_inr,
+            exclude_backtest=exclude_backtest,
         )
         trades = [
             _paper_trade_json(row, current_prices=current_prices, usd_inr=usd_inr)
             for row in trade_rows
         ]
+        models_available = available_model_symbols()
         return Response(
             {
                 "symbol": symbol or "ALL",
+                "scope": scope,
                 "market": {
-                    "type": market_snapshot.get("market", "futures"),
+                    "type": "futures",
                     "focus_symbol": focus_symbol,
                     "current_price_usdt": current_price,
-                    "signal_as_of": market_snapshot["as_of"],
+                    "signal_as_of": None,
                 },
                 "portfolio": summary,
                 "trades": trades,
                 "trade_count": total_trades,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + limit) < total_trades,
                 "tracked_symbols": tracked_symbols,
                 "tracked_count": len(tracked_symbols),
                 "model": {
@@ -719,7 +816,8 @@ class PaperPortfolioView(APIView):
                     "analysis_mode": "per_symbol",
                     "tracked_symbols": tracked_symbols,
                     "tracked_count": len(tracked_symbols),
-                    "models_available": sorted(all_model_meta.keys()),
+                    "models_available": models_available,
+                    "models_available_count": len(models_available),
                 },
             }
         )
@@ -731,29 +829,37 @@ class PerformanceReportView(APIView):
     def get(self, request):
         symbol_raw = request.query_params.get("symbol", "").strip().upper()
         symbol = symbol_raw or None
+        scope = request.query_params.get("scope", "live")
         try:
             usd_inr = get_usd_inr_rate()
         except (requests.RequestException, KeyError, TypeError, ValueError):
             usd_inr = None
 
-        closed_qs = PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN).order_by("-closed_at", "-opened_at")
-        open_qs = PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN).order_by("-opened_at")
+        closed_qs = _paper_trade_scope_filter(
+            PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN),
+            scope,
+        )
+        open_qs = _paper_trade_scope_filter(
+            PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN),
+            scope,
+        )
         if symbol:
             closed_qs = closed_qs.filter(symbol=symbol)
             open_qs = open_qs.filter(symbol=symbol)
 
-        closed_trades = list(closed_qs)
-        daily_rows = _build_performance_rows(closed_trades, period="daily", usd_inr=usd_inr)
-        weekly_rows = _build_performance_rows(closed_trades, period="weekly", usd_inr=usd_inr)
-        monthly_rows = _build_performance_rows(closed_trades, period="monthly", usd_inr=usd_inr)
+        closed_values = list(closed_qs.values_list("closed_at", "pnl_usdt", "outcome"))
+        daily_rows = _build_performance_rows(closed_values, period="daily", usd_inr=usd_inr)
+        weekly_rows = _build_performance_rows(closed_values, period="weekly", usd_inr=usd_inr)
+        monthly_rows = _build_performance_rows(closed_values, period="monthly", usd_inr=usd_inr)
 
         return Response(
             {
                 "symbol": symbol or "ALL",
+                "scope": scope,
                 "overview": {
-                    **_overall_performance_summary(closed_trades, usd_inr=usd_inr),
+                    **_overall_performance_summary(closed_values, usd_inr=usd_inr),
                     "open_trades": open_qs.count(),
-                    "total_trades": len(closed_trades) + open_qs.count(),
+                    "total_trades": len(closed_values) + open_qs.count(),
                 },
                 "current": {
                     "daily": _current_period_snapshot(daily_rows, period="daily", usd_inr=usd_inr),

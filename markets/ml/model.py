@@ -18,9 +18,13 @@ from markets.services.features import FEATURE_COLUMNS, TARGET_CLASS_TO_NAME
 MODEL_DIR = Path(
     os.environ.get("SIGNAL_MODEL_DIR", str(Path(__file__).resolve().parent / "models"))
 )
-MODEL_PATH = MODEL_DIR / "signal_model.pkl"
-METADATA_PATH = MODEL_DIR / "signal_model.meta.json"
-MODEL_GLOB = "signal_model_*.meta.json"
+PWM_MODEL_FAMILY = "pwm_model"
+LEGACY_MODEL_FAMILY = "signal_model"
+DEFAULT_MODEL_FAMILY = os.environ.get("MODEL_FAMILY", PWM_MODEL_FAMILY).strip() or PWM_MODEL_FAMILY
+PWM_MODEL_NAME = "pwm model"
+MODEL_PATH = MODEL_DIR / f"{LEGACY_MODEL_FAMILY}.pkl"
+METADATA_PATH = MODEL_DIR / f"{LEGACY_MODEL_FAMILY}.meta.json"
+MODEL_GLOB_PATTERNS = (f"{PWM_MODEL_FAMILY}_*.meta.json", f"{LEGACY_MODEL_FAMILY}_*.meta.json")
 
 
 @dataclass
@@ -145,16 +149,20 @@ class SignalModel:
 
     def save(self, metadata: Mapping[str, Any] | None = None, *, symbol: str | None = None) -> None:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        model_path, meta_path = model_paths(symbol)
+        model_path, meta_path = model_paths(symbol, family=DEFAULT_MODEL_FAMILY)
         payload = {
             "model": self.model,
             "feature_columns": self.feature_columns,
             "model_version": self.model_version,
+            "model_family": DEFAULT_MODEL_FAMILY,
+            "model_name": PWM_MODEL_NAME,
         }
         joblib.dump(payload, model_path)
         meta = {
             "model_version": self.model_version,
             "feature_columns": list(self.feature_columns),
+            "model_family": DEFAULT_MODEL_FAMILY,
+            "model_name": PWM_MODEL_NAME,
             "saved_at": timezone.now().isoformat(),
         }
         if metadata:
@@ -165,7 +173,9 @@ class SignalModel:
 
     @classmethod
     def load(cls, symbol: str | None = None) -> "SignalModel":
-        model_path, _ = model_paths(symbol)
+        model_path, _ = resolve_model_paths(symbol)
+        if not model_path.exists():
+            raise FileNotFoundError(f"No trained model file for {symbol or 'default'}.")
         payload = joblib.load(model_path)
         return cls(
             payload["model"],
@@ -175,7 +185,7 @@ class SignalModel:
 
     @classmethod
     def load_if_available(cls, symbol: str | None = None) -> "SignalModel | None":
-        model_path, _ = model_paths(symbol)
+        model_path, _ = resolve_model_paths(symbol)
         if not model_path.exists():
             return None
         return cls.load(symbol=symbol)
@@ -185,30 +195,60 @@ def normalize_model_symbol(symbol: str) -> str:
     return str(symbol or "").strip().upper()
 
 
-def model_paths(symbol: str | None = None) -> tuple[Path, Path]:
+def model_paths(symbol: str | None = None, *, family: str = DEFAULT_MODEL_FAMILY) -> tuple[Path, Path]:
     normalized = normalize_model_symbol(symbol) if symbol else ""
+    prefix = (family or DEFAULT_MODEL_FAMILY).strip() or PWM_MODEL_FAMILY
     if not normalized:
-        return MODEL_PATH, METADATA_PATH
+        if prefix == LEGACY_MODEL_FAMILY:
+            return MODEL_PATH, METADATA_PATH
+        return MODEL_DIR / f"{prefix}.pkl", MODEL_DIR / f"{prefix}.meta.json"
     return (
-        MODEL_DIR / f"signal_model_{normalized}.pkl",
-        MODEL_DIR / f"signal_model_{normalized}.meta.json",
+        MODEL_DIR / f"{prefix}_{normalized}.pkl",
+        MODEL_DIR / f"{prefix}_{normalized}.meta.json",
     )
 
 
-def available_model_symbols() -> list[str]:
+def resolve_model_paths(symbol: str | None = None) -> tuple[Path, Path]:
+    """Prefer pwm_model files; fall back to legacy signal_model per symbol."""
+    pwm_pkl, pwm_meta = model_paths(symbol, family=PWM_MODEL_FAMILY)
+    if pwm_pkl.exists():
+        return pwm_pkl, pwm_meta
+    legacy_pkl, legacy_meta = model_paths(symbol, family=LEGACY_MODEL_FAMILY)
+    if legacy_pkl.exists():
+        return legacy_pkl, legacy_meta
+    return pwm_pkl, pwm_meta
+
+
+def _symbol_from_meta_path(path: Path, family: str) -> str:
+    suffix = path.stem.removeprefix(f"{family}_").removesuffix(".meta")
+    return normalize_model_symbol(suffix)
+
+
+def available_model_symbols(*, family: str | None = None) -> list[str]:
     if not MODEL_DIR.exists():
         return []
-    out: list[str] = []
-    for path in sorted(MODEL_DIR.glob(MODEL_GLOB)):
-        suffix = path.stem.removeprefix("signal_model_").removesuffix(".meta")
-        symbol = normalize_model_symbol(suffix)
-        if symbol:
-            out.append(symbol)
-    return out
+    if family:
+        pattern = f"{family}_*.meta.json"
+        return sorted(
+            {
+                _symbol_from_meta_path(path, family)
+                for path in MODEL_DIR.glob(pattern)
+                if _symbol_from_meta_path(path, family)
+            }
+        )
+    symbols: dict[str, str] = {}
+    for fam in (PWM_MODEL_FAMILY, LEGACY_MODEL_FAMILY):
+        for path in MODEL_DIR.glob(f"{fam}_*.meta.json"):
+            sym = _symbol_from_meta_path(path, fam)
+            if not sym:
+                continue
+            if sym not in symbols or fam == PWM_MODEL_FAMILY:
+                symbols[sym] = fam
+    return sorted(symbols)
 
 
 def load_model_metadata(symbol: str | None = None) -> dict[str, Any]:
-    _, meta_path = model_paths(symbol)
+    _, meta_path = resolve_model_paths(symbol)
     if not meta_path.exists():
         return {}
     return json.loads(meta_path.read_text())

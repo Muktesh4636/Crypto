@@ -171,7 +171,7 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(make_secret)}"
 POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 PAPER_TRADER_SYMBOL="${PAPER_TRADER_SYMBOL:-}"
-PAPER_TRADER_UNIVERSE="${PAPER_TRADER_UNIVERSE:-20}"
+PAPER_TRADER_UNIVERSE="${PAPER_TRADER_UNIVERSE:-0}"
 PAPER_TRADER_INTERVAL="${PAPER_TRADER_INTERVAL:-1h}"
 PAPER_TRADER_MARKET="${PAPER_TRADER_MARKET:-futures}"
 FUTURES_FLOW_UNIVERSE="${FUTURES_FLOW_UNIVERSE:-0}"
@@ -488,7 +488,7 @@ ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a
 log "Initial ingest completed"
 
 step "Seeding AI signal model if missing"
-ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if ! compgen -G \"${SHARED_DIR}/model_store/signal_model_*.pkl\" > /dev/null; then ${VENV_DIR}/bin/python manage.py seed_model --days 1095 --universe ${MODEL_TRAIN_UNIVERSE}; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
+ssh_run "bash -lc 'set -e; cd ${CURRENT_DIR}; set -a; source ${ENV_FILE}; set +a; if ! compgen -G \"${SHARED_DIR}/model_store/pwm_model_*.pkl\" > /dev/null && ! compgen -G \"${SHARED_DIR}/model_store/signal_model_*.pkl\" > /dev/null; then ${VENV_DIR}/bin/python manage.py seed_model --days 1095 --universe ${MODEL_TRAIN_UNIVERSE}; fi; systemctl restart ${PAPER_SERVICE_NAME}'"
 log "AI model ready"
 
 step "Final health check"

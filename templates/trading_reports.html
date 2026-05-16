@@ -482,6 +482,10 @@
         </table>
       </div>
       <p class="empty" id="allTradesEmpty" hidden>No trades yet.</p>
+      <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <button class="button" id="loadMoreTradesBtn" type="button" hidden>Load more trades</button>
+        <span class="subtle" id="tradesPageInfo"></span>
+      </div>
     </section>
     {% endif %}
   </div>
@@ -612,14 +616,42 @@
       });
     }
 
-    async function refreshReports() {
-      const [portfolio, reports] = await Promise.all([
-        fetchJson("/api/trading/paper-portfolio/?limit=all"),
-        fetchJson("/api/trading/performance-report/")
-      ]);
+    var tradesScope = "live";
+    var loadedTrades = [];
 
-      const allTrades = portfolio.trades || [];
-      const openTrades = allTrades.filter(function (row) { return row.is_open; });
+    async function fetchAllLiveTrades() {
+      var all = [];
+      var offset = 0;
+      var pageSize = 200;
+      while (true) {
+        var url = "/api/trading/paper-portfolio/?scope=live&limit=" + pageSize + "&offset=" + offset;
+        var payload = await fetchJson(url);
+        all = all.concat(payload.trades || []);
+        if (!payload.has_more) {
+          return { trades: all, trade_count: payload.trade_count || all.length, portfolio: payload.portfolio };
+        }
+        offset += pageSize;
+      }
+    }
+
+    async function refreshReports() {
+      loadedTrades = [];
+      const portfolioPayload = await fetchAllLiveTrades();
+      const reports = await fetchJson("/api/trading/performance-report/?scope=live");
+      const portfolio = {
+        trades: portfolioPayload.trades,
+        trade_count: portfolioPayload.trade_count,
+        portfolio: portfolioPayload.portfolio
+      };
+
+      loadedTrades = portfolio.trades || [];
+      var openTrades = [];
+      if (document.getElementById("openTradesBody")) {
+        const openPayload = await fetchJson("/api/trading/paper-portfolio/?scope=live&status=open&limit=100");
+        openTrades = openPayload.trades || [];
+      } else {
+        openTrades = loadedTrades.filter(function (row) { return row.is_open; });
+      }
       const current = reports.current || {};
       const overview = reports.overview || {};
       const reportPeriods = reports.periods || {};
@@ -641,7 +673,15 @@
       var openTradesBadgeEl = document.getElementById("openTradesBadge");
       if (openTradesBadgeEl) openTradesBadgeEl.textContent = fmtNum(openTrades.length, 0) + " open";
       var allTradesBadgeEl = document.getElementById("allTradesBadge");
-      if (allTradesBadgeEl) allTradesBadgeEl.textContent = fmtNum(portfolio.trade_count || allTrades.length, 0) + " trades";
+      if (allTradesBadgeEl) {
+        allTradesBadgeEl.textContent = fmtNum(loadedTrades.length, 0) + " trades (all live)";
+      }
+      var tradesPageInfoEl = document.getElementById("tradesPageInfo");
+      if (tradesPageInfoEl) {
+        tradesPageInfoEl.textContent = "Showing all " + fmtNum(loadedTrades.length, 0) + " live paper trades";
+      }
+      var loadMoreBtn = document.getElementById("loadMoreTradesBtn");
+      if (loadMoreBtn) loadMoreBtn.hidden = true;
       var dailyBadgeEl = document.getElementById("dailyBadge");
       if (dailyBadgeEl) dailyBadgeEl.textContent = (current.daily && current.daily.label) ? current.daily.label : "No day";
       var weeklyBadgeEl = document.getElementById("weeklyBadge");
@@ -660,7 +700,7 @@
         renderTrades(
           document.getElementById("allTradesBody"),
           document.getElementById("allTradesEmpty"),
-          allTrades
+          loadedTrades
         );
       }
       if (document.getElementById("dailyBody")) {

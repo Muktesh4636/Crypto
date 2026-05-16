@@ -8,7 +8,9 @@ from markets.management.commands.seed_model import (
     _parse_window_date,
     _to_ms,
 )
-from markets.ml.model import SignalModel, model_paths
+from markets.models import PaperTrade
+from markets.ml.model import PWM_MODEL_FAMILY, PWM_MODEL_NAME, SignalModel, model_paths, resolve_model_paths
+from markets.trading.constants import BACKTEST_NOTE_PREFIX
 from markets.ml.retrain import retrain_from_losses, retrain_signal_model
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
@@ -51,6 +53,11 @@ class Command(BaseCommand):
             action="store_false",
             help="Do not prioritize pump/manipulation + news-hype setups.",
         )
+        parser.add_argument(
+            "--resume",
+            action="store_true",
+            help="Skip symbols that already have a pwm model and backtest journal rows.",
+        )
 
     def handle(self, *args, **options):
         symbol = options["symbol"].strip().upper()
@@ -66,6 +73,7 @@ class Command(BaseCommand):
         force = bool(options["force"])
         skip_seed = bool(options["skip_seed"])
         focus_pumps = bool(options["focus_pumps"])
+        resume = bool(options["resume"])
 
         start_dt = _parse_window_date(options["date_from"])
         end_dt = _parse_window_date(options["date_to"], end_of_day=True)
@@ -82,10 +90,13 @@ class Command(BaseCommand):
             symbols = top_futures_symbols_by_quote_volume(limit=max(1, min(universe, 500)))
 
         self.stdout.write(
-            f"Historical SHORT training {start_dt.date()}..{end_dt.date()} on {len(symbols)} symbols."
+            f"PWM model training {start_dt.date()}..{end_dt.date()} on {len(symbols)} symbols."
         )
+        self.stdout.write(f"Model family: {PWM_MODEL_NAME} ({PWM_MODEL_FAMILY}) — one file per coin.")
         if focus_pumps:
             self.stdout.write("Pump/manipulation + news-hype setups are prioritized for short entries.")
+        if resume:
+            self.stdout.write("Resume mode: skipping coins that already have pwm model + backtest trades.")
 
         if force:
             deleted = clear_backtest_trades()
@@ -103,11 +114,29 @@ class Command(BaseCommand):
         skipped: list[str] = []
         total = len(symbols)
 
+        pwm_meta = {
+            "model_family": PWM_MODEL_FAMILY,
+            "model_name": PWM_MODEL_NAME,
+            "strategy_mode": "short_only",
+        }
+
         for index, sym in enumerate(symbols, start=1):
-            model_path, _ = model_paths(sym)
+            pwm_path, _ = model_paths(sym, family=PWM_MODEL_FAMILY)
+            if resume and pwm_path.exists():
+                bt_count = (
+                    PaperTrade.objects.filter(symbol=sym, notes__startswith=BACKTEST_NOTE_PREFIX)
+                    .exclude(outcome=PaperTrade.Outcome.OPEN)
+                    .count()
+                )
+                if bt_count >= min_trades:
+                    skipped.append(f"{sym}: pwm done ({bt_count} backtest trades)")
+                    self.stdout.write(self.style.WARNING(f"[{index}/{total}] Skip {sym}: pwm model already trained."))
+                    continue
+
+            model_path, _ = resolve_model_paths(sym)
             if model_path.exists() and not force:
                 model = SignalModel.load(symbol=sym)
-            elif skip_seed and not model_path.exists():
+            elif skip_seed and not resolve_model_paths(sym)[0].exists():
                 skipped.append(f"{sym}: no model")
                 continue
             else:
@@ -131,9 +160,9 @@ class Command(BaseCommand):
                 model.train(train.loc[:, FEATURE_COLUMNS], train["target_class"])
                 model.save(
                     {
+                        **pwm_meta,
                         "symbol": sym,
-                        "strategy_mode": "short_only",
-                        "training_mode": "historical_short_seed",
+                        "training_mode": "pwm_historical_seed",
                     },
                     symbol=sym,
                 )

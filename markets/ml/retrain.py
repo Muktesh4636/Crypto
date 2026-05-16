@@ -5,7 +5,14 @@ from typing import Any
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score
 
-from markets.ml.model import SignalModel, available_model_symbols
+from markets.ml.model import (
+    PWM_MODEL_FAMILY,
+    PWM_MODEL_NAME,
+    SignalModel,
+    available_model_symbols,
+    model_paths,
+    resolve_model_paths,
+)
 from markets.models import PaperTrade
 from markets.services.features import FEATURE_COLUMNS, TARGET_NAME_TO_CLASS
 from markets.trading.constants import BACKTEST_NOTE_PREFIX
@@ -191,9 +198,7 @@ def retrain_from_losses(
 
 
 def model_paths_has_trained_booster(symbol: str) -> bool:
-    from markets.ml.model import model_paths
-
-    path, _ = model_paths(symbol)
+    path, _ = resolve_model_paths(symbol)
     return path.exists()
 
 
@@ -257,6 +262,69 @@ def _retrain_one_symbol(
         symbol=symbol,
     )
     return result
+
+
+def retrain_all_symbols_from_backtest(
+    *,
+    symbols: list[str] | None = None,
+    min_losses: int = 3,
+    min_trades: int = 10,
+) -> dict[str, Any]:
+    """
+    Retrain one model per symbol using only that symbol's backtest journal rows.
+    The 12k+ trades in the DB are split per coin — each coin never sees another coin's trades.
+    """
+    if symbols is None:
+        symbols = list(
+            PaperTrade.objects.filter(notes__startswith=BACKTEST_NOTE_PREFIX)
+            .exclude(outcome=PaperTrade.Outcome.OPEN)
+            .values_list("symbol", flat=True)
+            .distinct()
+            .order_by("symbol")
+        )
+
+    trained: list[dict[str, Any]] = []
+    skipped: dict[str, str] = {}
+
+    for sym in symbols:
+        sym = sym.upper()
+        trade_count = PaperTrade.objects.filter(
+            notes__startswith=BACKTEST_NOTE_PREFIX,
+            symbol=sym,
+        ).exclude(outcome=PaperTrade.Outcome.OPEN).count()
+        loss_count = _loss_count(sym, backtest_only=True, shorts_only=True)
+
+        if trade_count < min_trades and loss_count < min_losses:
+            skipped[sym] = f"only {trade_count} trades, {loss_count} losses"
+            continue
+
+        if not resolve_model_paths(sym)[0].exists():
+            skipped[sym] = "no pwm model file (run train_pwm_models first)"
+            continue
+
+        try:
+            if loss_count >= min_losses:
+                metrics = retrain_from_losses(
+                    sym,
+                    backtest_only=True,
+                    shorts_only=True,
+                    min_losses=min_losses,
+                )
+            else:
+                metrics = _retrain_one_symbol(sym, backtest_only=True, shorts_only=True)
+            trained.append(
+                {
+                    "symbol": sym,
+                    "trade_count": trade_count,
+                    "loss_count": loss_count,
+                    "train_rows": metrics.get("train_rows", 0),
+                    "training_mode": metrics.get("training_mode", "journal"),
+                }
+            )
+        except ValueError as exc:
+            skipped[sym] = str(exc)
+
+    return {"trained": trained, "skipped": skipped}
 
 
 def retrain_signal_model(

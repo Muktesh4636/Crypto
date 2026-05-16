@@ -3,12 +3,13 @@ from __future__ import annotations
 import threading
 import time
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Mapping
 
 from django.db.models import Sum
 from django.utils import timezone
 
-from markets.ml.model import SignalModel, available_model_symbols
+from markets.ml.model import MODEL_DIR, SignalModel, available_model_symbols
 from markets.models import PaperTrade
 from markets.trading.constants import (
     BACKTEST_NOTE_PREFIX,
@@ -16,10 +17,12 @@ from markets.trading.constants import (
     DEFAULT_MARKET,
     DEFAULT_SYMBOL,
     DEFAULT_UNIVERSE,
+    PAPER_TRADER_BATCH_SIZE,
 )
 from markets.trading.pnl import STARTING_CAPITAL_INR, starting_capital_usdt, trade_pnl_pct, trade_pnl_usdt
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
+    fetch_all_futures_mark_prices,
     fetch_historical_klines,
     top_futures_symbols_by_quote_volume,
 )
@@ -141,9 +144,6 @@ def tracked_symbols(
     trained = set(available_model_symbols())
     raw_universe = int(universe)
     if raw_universe <= 0:
-        if trained:
-            ranked = [sym for sym in all_futures_symbols_by_quote_volume() if sym in trained]
-            return ranked or sorted(trained)
         return all_futures_symbols_by_quote_volume()
     size = max(1, min(raw_universe, 500))
     if trained:
@@ -154,6 +154,29 @@ def tracked_symbols(
     return top_futures_symbols_by_quote_volume(limit=size)
 
 
+def _scan_offset_path() -> Path:
+    return MODEL_DIR.parent / "paper_trader_scan_offset.txt"
+
+
+def _next_scan_batch(symbols: list[str], *, batch_size: int = PAPER_TRADER_BATCH_SIZE) -> tuple[list[str], int, int]:
+    if not symbols:
+        return [], 0, 0
+    batch_size = max(1, min(int(batch_size), len(symbols)))
+    path = _scan_offset_path()
+    offset = 0
+    if path.exists():
+        try:
+            offset = int(path.read_text().strip()) % len(symbols)
+        except ValueError:
+            offset = 0
+    batch = symbols[offset : offset + batch_size]
+    if len(batch) < batch_size:
+        batch = batch + symbols[: batch_size - len(batch)]
+    next_offset = (offset + batch_size) % len(symbols)
+    path.write_text(str(next_offset))
+    return batch, offset, len(symbols)
+
+
 def latest_open_trade(symbol: str | None = None) -> PaperTrade | None:
     qs = PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN)
     if symbol:
@@ -161,10 +184,12 @@ def latest_open_trade(symbol: str | None = None) -> PaperTrade | None:
     return qs.order_by("-opened_at").first()
 
 
-def open_trades(symbol: str | None = None) -> list[PaperTrade]:
+def open_trades(symbol: str | None = None, *, exclude_backtest: bool = False) -> list[PaperTrade]:
     qs = PaperTrade.objects.filter(outcome=PaperTrade.Outcome.OPEN)
     if symbol:
         qs = qs.filter(symbol=symbol)
+    if exclude_backtest:
+        qs = qs.exclude(notes__startswith=BACKTEST_NOTE_PREFIX)
     return list(qs.order_by("-opened_at"))
 
 
@@ -175,16 +200,16 @@ def portfolio_snapshot(
     current_prices: Mapping[str, float] | None = None,
     usd_inr: float | None = None,
     market: str = DEFAULT_MARKET,
+    exclude_backtest: bool = False,
 ) -> dict[str, Any]:
-    open_rows = open_trades(symbol)
+    open_rows = open_trades(symbol, exclude_backtest=exclude_backtest)
     price_map = dict(current_prices or {})
     if symbol and current_price is not None:
         price_map[symbol] = float(current_price)
-    for trade in open_rows:
-        if trade.symbol not in price_map:
-            price_map[trade.symbol] = float(load_market_snapshot(symbol=trade.symbol, market=market)["close"])
     starting_usdt = starting_capital_usdt(usd_inr)
     closed_qs = PaperTrade.objects.exclude(outcome=PaperTrade.Outcome.OPEN)
+    if exclude_backtest:
+        closed_qs = closed_qs.exclude(notes__startswith=BACKTEST_NOTE_PREFIX)
     if symbol:
         closed_qs = closed_qs.filter(symbol=symbol)
     realized_pnl_usdt = float(closed_qs.aggregate(total=Sum("pnl_usdt"))["total"] or 0.0)
@@ -378,25 +403,36 @@ def run_once(
         if (model := SignalModel.load_if_available(symbol=sym)) is not None
     }
     if not models:
-        raise RuntimeError("No per-symbol trained models found. Run `python manage.py seed_model` first.")
+        raise RuntimeError("No per-symbol trained models found. Run train_pwm_models or seed_model first.")
+    try:
+        mark_prices = fetch_all_futures_mark_prices()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to load futures mark prices: {exc}") from exc
+
+    tradable = [sym for sym in watchlist if sym in models]
+    scan_batch, scan_offset, scan_total = _next_scan_batch(tradable, batch_size=PAPER_TRADER_BATCH_SIZE)
+
     current_prices: dict[str, float] = {}
     closed_trades: list[PaperTrade] = []
     held_trades: list[dict[str, Any]] = []
     for trade in open_trades():
-        signal_snapshot = load_market_snapshot(symbol=trade.symbol, interval=interval, market=market)
-        current_price = float(signal_snapshot["close"])
+        row = mark_prices.get(trade.symbol) or {}
+        current_price = float(row.get("mark_price") or 0.0)
+        if current_price <= 0:
+            continue
         current_prices[trade.symbol] = current_price
-        symbol_model = models.get(trade.symbol) or SignalModel.load_if_available(symbol=trade.symbol)
-        prediction = symbol_model.predict(signal_snapshot) if symbol_model is not None else None
-        if current_price >= float(trade.stop_loss_price or 0.0):
-            closed_trades.append(_close_trade(trade, current_price=current_price, reason="short stop loss hit"))
+        symbol_model = models.get(trade.symbol)
+        prediction = None
+        stop = float(trade.stop_loss_price or 0.0)
+        take = float(trade.take_profit_price or 0.0)
+        if stop > 0 and current_price >= stop:
+            # Fill at stop level, not a worse gap price (matches historical backtest).
+            closed_trades.append(_close_trade(trade, current_price=stop, reason="short stop loss hit"))
             continue
-        if current_price <= float(trade.take_profit_price or 0.0):
-            closed_trades.append(_close_trade(trade, current_price=current_price, reason="short take profit hit"))
+        if take > 0 and current_price <= take:
+            closed_trades.append(_close_trade(trade, current_price=take, reason="short take profit hit"))
             continue
-        if prediction is not None and prediction.label != "SELL" and prediction.confidence >= min_confidence:
-            closed_trades.append(_close_trade(trade, current_price=current_price, reason="bearish signal faded"))
-            continue
+        # Strict exits only: +8% take-profit or +15% stop-loss (no signal-fade close).
         held_trades.append(
             {
                 "trade_id": trade.id,
@@ -410,7 +446,7 @@ def run_once(
 
     candidates = rank_short_candidates(
         models=models,
-        symbols=watchlist,
+        symbols=scan_batch,
         interval=interval,
         market=market,
         min_confidence=min_confidence,
@@ -457,10 +493,20 @@ def run_once(
         open_symbols.add(candidate_symbol)
 
     if not closed_trades and not opened_trades and not held_trades:
-        return {"event": "skip", "reason": "no_short_candidate", "scanned_symbols": len(watchlist)}
+        return {
+            "event": "skip",
+            "reason": "no_short_candidate",
+            "watchlist_symbols": len(watchlist),
+            "models_ready": len(models),
+            "scan_batch": len(scan_batch),
+        }
     return {
         "event": "batch",
-        "scanned_symbols": len(watchlist),
+        "watchlist_symbols": len(watchlist),
+        "models_ready": len(models),
+        "scan_batch": len(scan_batch),
+        "scan_offset": scan_offset,
+        "scan_total": scan_total,
         "opened_count": len(opened_trades),
         "opened_symbols": [trade.symbol for trade in opened_trades],
         "closed_count": len(closed_trades),

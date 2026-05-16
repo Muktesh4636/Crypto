@@ -165,8 +165,7 @@ def run_symbol_backtest(
                 close_position(open_trade, price=stop, bar_time=bar_time, reason="stop_loss")
             elif low <= take:
                 close_position(open_trade, price=take, bar_time=bar_time, reason="take_profit")
-            elif prediction.label != "SELL" and prediction.confidence >= min_confidence:
-                close_position(open_trade, price=close, bar_time=bar_time, reason="signal_faded")
+            # Strict exits only: stop-loss or take-profit (no signal-fade close).
             continue
 
         pump_score = float(snapshot.get("pump_manipulation_score_24", 0.0) or 0.0)
