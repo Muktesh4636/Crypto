@@ -10,6 +10,8 @@ from django.utils.dateparse import parse_date
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
 from markets.ml.model import SignalModel, model_paths
+from markets.ml.retrain import retrain_signal_model
+from markets.trading.historical_backtest import run_symbol_backtest
 from markets.services.binance import (
     all_futures_symbols_by_quote_volume,
     fetch_historical_klines,
@@ -119,6 +121,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Train every eligible Binance USDT perpetual futures symbol (ignores --universe cap).",
         )
+        parser.add_argument(
+            "--learn-from-backtest",
+            dest="learn_from_backtest",
+            action="store_true",
+            default=True,
+            help="After phase-1 ML train, simulate trades on that window and retrain from outcomes.",
+        )
+        parser.add_argument(
+            "--no-learn-from-backtest",
+            dest="learn_from_backtest",
+            action="store_false",
+        )
 
     def handle(self, *args, **options):
         symbol = options["symbol"].strip().upper()
@@ -164,6 +178,7 @@ class Command(BaseCommand):
                 phase1_to=options["phase1_to"],
                 phase2_from=options["phase2_from"],
                 phase2_to=options["phase2_to"],
+                learn_from_backtest=bool(options["learn_from_backtest"]),
             )
         else:
             self._train_single_stage(
@@ -283,6 +298,7 @@ class Command(BaseCommand):
         phase1_to: str,
         phase2_from: str,
         phase2_to: str,
+        learn_from_backtest: bool,
     ) -> None:
         phase1_start = _parse_window_date(phase1_from)
         phase1_end = _parse_window_date(phase1_to, end_of_day=True)
@@ -364,7 +380,49 @@ class Command(BaseCommand):
                 phase1_holdout_acc = float(accuracy_score(phase1_holdout["target_class"], phase1_pred))
                 phase1_holdout_f1 = float(f1_score(phase1_holdout["target_class"], phase1_pred, average="macro"))
 
-            self.stdout.write(f"Phase 2 dataset for {sym}...")
+            backtest_stats: dict[str, Any] | None = None
+            if learn_from_backtest:
+                model.save(
+                    {
+                        "symbol": sym,
+                        "training_mode": "two_stage_interim",
+                        "phase": 1,
+                    },
+                    symbol=sym,
+                )
+                self.stdout.write(f"[{index}/{total}] Backtest learning on {sym} (phase1 window)...")
+                try:
+                    backtest_stats = run_symbol_backtest(
+                        sym,
+                        model,
+                        interval=interval,
+                        start_ms=phase1_start_ms,
+                        end_ms=phase1_end_ms,
+                        clear_existing=True,
+                        phase_label="phase1",
+                    )
+                    if int(backtest_stats["trades_closed"]) >= 20:
+                        retrain_metrics = retrain_signal_model(symbol=sym)
+                        sym_metrics = retrain_metrics.get("results", {}).get(sym, {})
+                        model = SignalModel.load(symbol=sym)
+                        self.stdout.write(
+                            self.style.SUCCESS(
+                                f"  Retrained from {backtest_stats['trades_closed']} simulated trades "
+                                f"(wins={backtest_stats['wins']} losses={backtest_stats['losses']}, "
+                                f"acc={sym_metrics.get('train_accuracy', 0):.3f})."
+                            )
+                        )
+                    else:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"  Only {backtest_stats['trades_closed']} backtest trades; "
+                                "need 20+ to retrain from journal."
+                            )
+                        )
+                except ValueError as exc:
+                    self.stdout.write(self.style.WARNING(f"  Backtest skipped for {sym}: {exc}"))
+
+            self.stdout.write(f"[{index}/{total}] Phase 2 dataset for {sym}...")
             phase2_dataset = _build_symbol_dataset(
                 sym,
                 interval=interval,
@@ -427,6 +485,10 @@ class Command(BaseCommand):
             if phase1_holdout_acc is not None:
                 training_phases[0]["holdout_accuracy"] = phase1_holdout_acc
                 training_phases[0]["holdout_macro_f1"] = phase1_holdout_f1
+            if backtest_stats is not None:
+                training_phases[0]["backtest_trades_closed"] = backtest_stats["trades_closed"]
+                training_phases[0]["backtest_wins"] = backtest_stats["wins"]
+                training_phases[0]["backtest_losses"] = backtest_stats["losses"]
 
             metadata = {
                 "symbol": sym,
