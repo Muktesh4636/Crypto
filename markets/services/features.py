@@ -129,6 +129,8 @@ FEATURE_COLUMNS = (
     "whale_volume_spike_24",
     "whale_sell_pressure_24",
     "max_trade_size_ratio_24",
+    "pump_manipulation_score_24",
+    "news_hype_score_24",
     "order_book_imbalance",
     "order_book_bid_share",
     "order_book_spread_pct",
@@ -404,6 +406,43 @@ def _time_pattern_features(index: pd.DatetimeIndex) -> pd.DataFrame:
     return out
 
 
+def _pump_manipulation_features(frame: pd.DataFrame, *, bars_24: int = 24) -> pd.DataFrame:
+    """Score likely pump/manipulation: volume spike + sharp rally + trade near local highs."""
+    close = frame["close"].astype(float)
+    quote_volume = frame["quote_volume"].astype(float)
+    out = pd.DataFrame(index=frame.index)
+    vol_median = quote_volume.rolling(bars_24, min_periods=3).median().replace(0, np.nan)
+    vol_spike = (quote_volume / vol_median).fillna(0.0)
+    pump_return = close.pct_change(bars_24).clip(lower=0.0).fillna(0.0)
+    bars_30d = _bars_for_days(frame.index, 30)
+    local_high = close.rolling(bars_30d, min_periods=max(24, bars_30d // 3)).max().replace(0, np.nan)
+    near_high = (close / local_high).fillna(0.0)
+    trade_count = frame["trade_count"].astype(float).replace(0, np.nan)
+    avg_size = quote_volume / trade_count
+    size_spike = avg_size / avg_size.rolling(bars_24, min_periods=3).mean().replace(0, np.nan)
+    vol_component = (vol_spike - 1.0).clip(lower=0.0) / 4.0
+    return_component = (pump_return * 20.0).clip(0.0, 1.0)
+    high_component = near_high.clip(0.0, 1.0)
+    size_component = (size_spike - 1.0).clip(lower=0.0) / 3.0
+    out["pump_manipulation_score_24"] = (
+        0.35 * vol_component + 0.30 * return_component + 0.20 * high_component + 0.15 * size_component
+    ).clip(0.0, 1.0)
+    return out
+
+
+def _news_hype_features(index: pd.DatetimeIndex, news_features: pd.DataFrame) -> pd.DataFrame:
+    """News-driven hype: elevated article flow with bullish tone (often precedes pumps)."""
+    out = pd.DataFrame(index=index)
+    count_24 = news_features.get("news_count_24h", pd.Series(0.0, index=index)).astype(float)
+    count_7d = news_features.get("news_count_7d", pd.Series(0.0, index=index)).astype(float)
+    sentiment_24 = news_features.get("news_sentiment_24h", pd.Series(0.0, index=index)).astype(float)
+    count_baseline = (count_7d / 7.0).replace(0, np.nan)
+    count_spike = (count_24 / count_baseline).fillna(0.0).clip(0.0, 5.0) / 5.0
+    bullish = sentiment_24.clip(lower=0.0)
+    out["news_hype_score_24"] = (0.55 * count_spike + 0.45 * bullish).clip(0.0, 1.0)
+    return out
+
+
 def _whale_behavior_features(frame: pd.DataFrame, *, bars_24: int = 24) -> pd.DataFrame:
     quote_volume = frame["quote_volume"].astype(float)
     trade_count = frame["trade_count"].astype(float).replace(0, np.nan)
@@ -653,11 +692,15 @@ def build_feature_frame(
         latest_flow=context.latest_flow if context else None,
     )
     news_features = _news_features(frame.index)
+    pump_features = _pump_manipulation_features(frame)
+    news_hype_features = _news_hype_features(frame.index, news_features)
     macro_features = _macro_series(frame.index)
     frame = (
         frame.join(candle_features, how="left")
         .join(volume_profile_features, how="left")
         .join(time_features, how="left")
+        .join(pump_features, how="left")
+        .join(news_hype_features, how="left")
         .join(whale_features, how="left")
         .join(btc_features, how="left")
         .join(fear_greed_features, how="left")

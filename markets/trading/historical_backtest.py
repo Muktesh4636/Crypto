@@ -20,6 +20,8 @@ from markets.trading.paper_engine import (
 
 BACKTEST_NOTE_PREFIX = "backtest:"
 DEFAULT_WARMUP_BARS = 2400
+PUMP_FOCUS_THRESHOLD = 0.55
+DEFAULT_PUMP_MIN_CONFIDENCE = 0.48
 
 
 def _parse_window_date(value: str, *, end_of_day: bool = False) -> datetime:
@@ -77,6 +79,8 @@ def run_symbol_backtest(
     warmup_bars: int = DEFAULT_WARMUP_BARS,
     clear_existing: bool = True,
     phase_label: str = "",
+    focus_pumps: bool = True,
+    pump_min_confidence: float = DEFAULT_PUMP_MIN_CONFIDENCE,
 ) -> dict[str, Any]:
     sym = symbol.upper()
     if clear_existing:
@@ -121,6 +125,7 @@ def run_symbol_backtest(
     closed = 0
     wins = 0
     losses = 0
+    pump_trades = 0
 
     def close_position(trade: PaperTrade, *, price: float, bar_time: pd.Timestamp, reason: str) -> None:
         nonlocal equity_usdt, closed, wins, losses, open_trade
@@ -170,7 +175,16 @@ def run_symbol_backtest(
                 close_position(open_trade, price=close, bar_time=bar_time, reason="signal_faded")
             continue
 
-        if prediction.label != "SELL" or prediction.confidence < min_confidence:
+        pump_score = float(snapshot.get("pump_manipulation_score_24", 0.0) or 0.0)
+        news_hype = float(snapshot.get("news_hype_score_24", 0.0) or 0.0)
+        is_pump_setup = focus_pumps and (
+            pump_score >= PUMP_FOCUS_THRESHOLD or news_hype >= 0.45
+        )
+        required_confidence = pump_min_confidence if is_pump_setup else min_confidence
+
+        if prediction.label != "SELL" or prediction.confidence < required_confidence:
+            continue
+        if focus_pumps and not is_pump_setup and pump_score < 0.25 and news_hype < 0.2:
             continue
 
         notional = equity_usdt * risk_fraction
@@ -191,12 +205,17 @@ def run_symbol_backtest(
                 "prediction": prediction.label,
                 "confidence": prediction.confidence,
                 "probabilities": prediction.probabilities,
+                "pump_setup": is_pump_setup,
+                "pump_manipulation_score_24": pump_score,
+                "news_hype_score_24": news_hype,
             },
             model_version=prediction.model_version,
             notes=f"{note_tag}:opened",
             opened_at=bar_time.to_pydatetime(),
         )
         opened += 1
+        if is_pump_setup:
+            pump_trades += 1
 
     if open_trade is not None:
         last_time = frame.index[-1]
@@ -210,5 +229,6 @@ def run_symbol_backtest(
         "trades_closed": closed,
         "wins": wins,
         "losses": losses,
+        "pump_focus_trades": pump_trades,
         "ending_equity_usdt": round(equity_usdt, 4),
     }

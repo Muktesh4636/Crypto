@@ -402,7 +402,11 @@ class Command(BaseCommand):
                         phase_label="phase1",
                     )
                     if int(backtest_stats["trades_closed"]) >= 20:
-                        retrain_metrics = retrain_signal_model(symbol=sym)
+                        retrain_metrics = retrain_signal_model(
+                            symbol=sym,
+                            backtest_only=True,
+                            shorts_only=True,
+                        )
                         sym_metrics = retrain_metrics.get("results", {}).get(sym, {})
                         model = SignalModel.load(symbol=sym)
                         self.stdout.write(

@@ -23,7 +23,7 @@ class Command(BaseCommand):
         parser.add_argument("--universe", type=int, default=15)
         parser.add_argument("--all-futures", action="store_true")
         parser.add_argument("--from", dest="date_from", type=str, default="2023-01-01")
-        parser.add_argument("--to", dest="date_to", type=str, default="2024-12-31")
+        parser.add_argument("--to", dest="date_to", type=str, default="2026-05-15")
         parser.add_argument("--interval", type=str, default="1h")
         parser.add_argument("--min-confidence", type=float, default=0.55)
         parser.add_argument("--risk-fraction", type=float, default=0.05)
@@ -33,7 +33,9 @@ class Command(BaseCommand):
         parser.add_argument("--phase-label", type=str, default="phase1")
         parser.add_argument("--clear", action="store_true", help="Delete prior backtest trades before run.")
         parser.add_argument("--retrain", action="store_true", help="Retrain each symbol after backtest if enough trades.")
-        parser.add_argument("--min-trades-for-retrain", type=int, default=20)
+        parser.add_argument("--min-trades-for-retrain", type=int, default=15)
+        parser.add_argument("--pump-min-confidence", type=float, default=0.48)
+        parser.add_argument("--no-focus-pumps", dest="focus_pumps", action="store_false")
 
     def handle(self, *args, **options):
         symbol = options["symbol"].strip().upper()
@@ -50,6 +52,8 @@ class Command(BaseCommand):
         clear_existing = bool(options["clear"])
         do_retrain = bool(options["retrain"])
         min_trades = max(1, int(options["min_trades_for_retrain"]))
+        focus_pumps = bool(options.get("focus_pumps", True))
+        pump_min_confidence = float(options["pump_min_confidence"])
 
         start_dt = _parse_window_date(options["date_from"])
         end_dt = _parse_window_date(options["date_to"], end_of_day=True)
@@ -105,6 +109,8 @@ class Command(BaseCommand):
                     warmup_bars=warmup_bars,
                     clear_existing=clear_existing or bool(symbol or raw_symbols),
                     phase_label=phase_label,
+                    focus_pumps=focus_pumps,
+                    pump_min_confidence=pump_min_confidence,
                 )
                 results.append(stats)
                 self.stdout.write(
@@ -115,10 +121,16 @@ class Command(BaseCommand):
                 )
                 if do_retrain and stats["trades_closed"] >= min_trades:
                     try:
-                        metrics = retrain_signal_model(symbol=sym)
+                        metrics = retrain_signal_model(
+                            symbol=sym,
+                            backtest_only=True,
+                            shorts_only=True,
+                        )
+                        sym_row = metrics.get("results", {}).get(sym, metrics)
                         self.stdout.write(
                             self.style.SUCCESS(
-                                f"  Retrained {sym}: train_acc={metrics.get('train_accuracy', 0):.3f}"
+                                f"  Retrained {sym}: train_acc={sym_row.get('train_accuracy', 0):.3f} "
+                                f"losses_weighted=yes"
                             )
                         )
                     except ValueError as exc:
