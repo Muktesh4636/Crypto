@@ -161,8 +161,8 @@ log "Server reachable"
 
 DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-$(make_secret)}"
 DJANGO_DEBUG="${DJANGO_DEBUG:-False}"
-DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-${DOMAIN},127.0.0.1,localhost}"
-DJANGO_CSRF_TRUSTED_ORIGINS="${DJANGO_CSRF_TRUSTED_ORIGINS:-https://${DOMAIN},http://${DOMAIN}}"
+DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-${DOMAIN},www.${DOMAIN},127.0.0.1,localhost}"
+DJANGO_CSRF_TRUSTED_ORIGINS="${DJANGO_CSRF_TRUSTED_ORIGINS:-https://${DOMAIN},https://www.${DOMAIN},http://${DOMAIN},http://www.${DOMAIN}}"
 GUARDIAN_API_KEY="${GUARDIAN_API_KEY:-}"
 FRED_API_KEY="${FRED_API_KEY:-}"
 POSTGRES_DB="${POSTGRES_DB:-crypto_dashboard}"
@@ -311,6 +311,38 @@ server {
 
     client_max_body_size 10m;
 
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    location /static/ {
+        alias ${SHARED_DIR}/static/;
+        expires 1h;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 10m;
+
     location /static/ {
         alias ${SHARED_DIR}/static/;
         expires 1h;
@@ -402,6 +434,43 @@ ssh_run "
   mv ${REMOTE_NGINX} ${NGINX_SITE}
   ln -sfn ${NGINX_SITE} /etc/nginx/sites-enabled/${DOMAIN}
   rm -f /etc/nginx/sites-enabled/default
+  mkdir -p /var/www/certbot
+  if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
+    # HTTP-only config until certificate exists (SSL block requires cert paths).
+    cat > ${NGINX_SITE} <<NGINX_HTTP
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    client_max_body_size 10m;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    location /static/ {
+        alias ${SHARED_DIR}/static/;
+        expires 1h;
+        add_header Cache-Control \"public\";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+        proxy_read_timeout 120;
+    }
+}
+NGINX_HTTP
+    nginx -t
+    systemctl reload nginx
+    certbot certonly --webroot -w /var/www/certbot -d ${DOMAIN} \\
+      --non-interactive --agree-tos --register-unsafely-without-email || true
+    mv ${REMOTE_NGINX} ${NGINX_SITE}
+  fi
   nginx -t
   systemctl daemon-reload
   systemctl enable ${SERVICE_NAME} ${PAPER_SERVICE_NAME} ${FLOW_SERVICE_NAME} ${RETRAIN_TIMER_NAME} nginx
